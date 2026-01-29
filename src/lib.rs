@@ -17,7 +17,46 @@
 //!     println!("Program is running!");
 //! }
 //! ```
-//! For further orientation, get yourself acquainted with the [Window](window::Window), [Component] and [Commands] structs.  
+//! For further orientation, get yourself acquainted with the [Window](window::Window), [Component] and [Commands] structs, as well as
+//! the [Actor](basic_components::Actor) [Component]. 
+//! ## Minimal Example
+//! Below is a minimal example of a game, where you can control a player.
+//! 
+//! **Notice**: You'll have to place an `.png` or `.jpg` file at `./assets/textures/player`!
+//! ```
+//! use pine::prelude::*;
+//! 
+//! fn main() {
+//!     let mut window = Window::new("My Window", start, update);
+//!     window.on_key_down(on_key_down);
+//!     window.run();
+//! }
+//! 
+//! pub fn on_key_down(commands: &mut Commands, keycode: i32) {
+//!     let mut player = find!(commands, Actor, "Player");
+//! 
+//!     if keycode == KeyCode::UP {    
+//!         player.transform.y -= 10;
+//!     }
+//!     if keycode == KeyCode::DOWN {
+//!         player.transform.y += 10;
+//!     }
+//!     if keycode == KeyCode::RIGHT {
+//!         player.transform.x += 10;
+//!     }
+//!     if keycode == KeyCode::LEFT {
+//!         player.transform.x -= 10;
+//!     }
+//! }
+//! 
+//! pub fn start(commands: &mut Commands) {
+//!     let player = make!(Actor::new("Player", "player"));
+//!     commands.spawn(cpy!(player));
+//! 
+//! } 
+//! 
+//! pub fn update(commands: &mut Commands) {}
+//! ``` 
 
 pub type ComponentPointer = Rc<RefCell<dyn Component>>;
 
@@ -27,8 +66,10 @@ pub mod prelude;
 pub mod util;
 pub mod assets;
 pub mod basic_attributes;
+pub mod math;
 
-use std::cell::RefCell;
+use std::cell::{RefCell, RefMut};
+use std::ffi::CString;
 use std::rc::Rc;
 
 /// ## Description
@@ -54,17 +95,72 @@ macro_rules! make {
 }
 
 /// ## Description
+/// The [try_find] macro is a shorthand to finding [Components](Component) in the list of currently active components that were 
+/// created in a different function and try get an instance in the current function. [try_find] returns `Option<RefMut<'_, T>>`, with
+/// `T` being the type of [Component] you are searching for.
+/// ## Example
+/// ```
+/// fn start(commands: &mut Commands) {
+///     let my_actor = make!(Actor::new("My Actor"));
+///     commands.spawn(cpy!(my_actor)); // spawns component and adds it to the active components list 
+/// }
+/// 
+/// fn update(commands: &mut Commands) {
+///     let actor = try_find!(commands, Actor, "My Actor");
+///     if actor.is_some() {
+///         println!("Found actor!");
+///     }
+/// }
+/// ```
+/// The [try_find] macro is equivalent to the [find](Commands::find) method of [Commands]:
+/// ```
+/// let actor: Option<RefMut<'_, Actor>> = commands.find::<Actor>("My Actor");
+/// ```
+#[macro_export]
+macro_rules! try_find {
+    ($cmds:expr, $typeid:ty, $id:expr) => {
+        $cmds.find::<$typeid>($id)
+    };
+}
+
+/// ## Description
+/// The [find] macro is a shorthand to finding [Components](Component) in the list of currently active components that were 
+/// created in a different function and try get an instance in the current function. [find] returns `RefMut<'_, T>`, with
+/// `T` being the type of [Component] you are searching for and [panics](panic) if the Component is not found.
+/// ## Example
+/// ```
+/// fn start(commands: &mut Commands) {
+///     let my_actor = make!(Actor::new("My Actor"));
+///     commands.spawn(ptr!(my_actor)); // spawns component and adds it to the active components list 
+/// }
+/// 
+/// fn update(commands: &mut Commands) {
+///     let actor = find!(commands, Actor, "My Actor");
+/// }
+/// ```
+/// The [find] macro is equivalent to the [find](Commands::find) method of [Commands]:
+/// ```
+/// let actor: RefMut<'_, Actor> = commands.find::<Actor>("My Actor").unwrap();
+/// ```
+#[macro_export]
+macro_rules! find {
+    ($cmds:expr, $typeid:ty, $id:expr) => {
+        $cmds.find::<$typeid>($id).unwrap()
+    };
+}
+
+/// ## Description
 /// [Components](Component) in Pine are passed wrapped in an `Rc<RefCell<Component>>`-Pointer structure.
 /// Use the `cpy!` macro to pass references to Components into functions that expect them as such, for example in the form of
 /// - `&mut Rc<RefCell<dyn Component>>` 
 /// - `&Rc<RefCell<dyn Component>>`
-/// To create Components pre-wrapped in the required pointer structure, use the [make] macro. If you want to **modify the value of an component**, use the [qry] macro.
+/// To create Components pre-wrapped in the required pointer structure, use the [make] macro. If you want to **modify the value of an component**, use the [get] macro.
 /// ## Example
 /// ```
 /// fn __start__(commands: &mut Commands) {
 ///     let label = make!(Label::default());
 ///     commands.spawn(cpy!(label));
-///     qry!(label).text = "Hello, World".to_string(); // 'label' remains in this scope!
+///     get!(label).text = "Hello, World".to_string(); // 'label' remains in this scope!
 ///     // --snip--
 /// }
 /// ```
@@ -77,18 +173,18 @@ macro_rules! cpy {
 
 /// ## Description
 /// [Components](Component) in Pine are passed wrapped in an `Rc<RefCell<Component>>`-Pointer structure.
-/// Use the `qry!` macro to borrow an instance of this Component pointer, **without exposing complex pointer structure**.
+/// Use the `get!` macro to borrow an instance of this Component pointer, **without exposing complex pointer structure**.
 /// - When creating instances of Components, use the [make] macro.
 /// - When passing references to Components to other functions, use the [cpy] macro.
 /// ## Example
 /// ```
 /// fn __start__(&mut commands: Commands) {
 ///     let label = make!(Label::default());
-///     qry!(label).text = "Hello, World!";
+///     get!(label).text = "Hello, World!";
 /// }
 /// ```
 #[macro_export]
-macro_rules! qry {
+macro_rules! get {
     ($x:expr) => {
         $x.borrow_mut()
     };
@@ -97,9 +193,10 @@ macro_rules! qry {
 use std::{mem::MaybeUninit};
 
 use sdl2::{sys::{SDL_CreateRenderer, SDL_CreateWindow, SDL_Event, SDL_INIT_VIDEO, SDL_Init, SDL_PollEvent, SDL_Renderer, SDL_Window}};
-use sdl2::sys::{SDL_DestroyRenderer, SDL_DestroyWindow, SDL_EventType, SDL_Quit};
+use sdl2::sys::{SDL_CreateTextureFromSurface, SDL_DestroyRenderer, SDL_DestroyWindow, SDL_EventType, SDL_FreeSurface, SDL_LoadBMP_RW, SDL_Quit, SDL_RWFromFile, SDL_RWops, SDL_Surface, SDL_Texture, image};
 
-use crate::assets::{AsAny, Safecast};
+use crate::prelude::Texture2D;
+use crate::util::ComponentReferenceSafecast;
 
 
 /// ## Description
@@ -128,6 +225,29 @@ impl Renderer {
     pub(in crate) fn get(&self) -> *mut SDL_Renderer {
         self.0
     }
+
+    pub(in crate) unsafe fn texture_from_asset(&self, texture: &Texture2D) -> *mut SDL_Texture {
+        let cstr_path = CString::new(texture.get()).unwrap();
+
+        let rwops: *mut SDL_RWops = SDL_RWFromFile(cstr_path.as_ptr(), CString::new("rb").unwrap().as_ptr());
+        if rwops.is_null() {
+            panic!("RENDERER: Failed to open texture file: {}", texture.get());
+        }
+
+        let surface = sdl2::sys::image::IMG_Load_RW(rwops, 1);
+        if surface.is_null() {
+            panic!("RENDERER: Failed to load BMP surface from file: {}", texture.get());
+        }
+
+        let sdl_texture: *mut SDL_Texture = SDL_CreateTextureFromSurface(self.get(), surface);
+        if sdl_texture.is_null() {
+            panic!("RENDERER: Failed to create SDL_Texture from surface: {}", texture.get());
+        }
+
+        SDL_FreeSurface(surface);
+
+        sdl_texture
+    }
 }
 
 impl Handle {
@@ -136,7 +256,13 @@ impl Handle {
     }
 }
 
-pub trait Component {
+impl Clone for Box<dyn Component> {
+    fn clone(&self) -> Self {
+        self.clone_box()
+    }
+}
+
+pub trait Component: std::any::Any {
     /// ## Description
     /// If you want your component to be renderable, you'll have to include that into the [render](Component::render) method of your component.
     /// Everything apart from rendering, that is, everything that does not need to be regenerated each tick goes into the
@@ -155,6 +281,10 @@ pub trait Component {
     /// Everything apart from rendering, that is, everything that does not need to be regenerated each tick goes into the
     /// [init](Component::init) method instead. 
     fn render(&mut self, renderer: &mut Renderer);
+
+    fn clone_box(&self) -> Box<dyn Component>;
+    fn as_any(&self) -> &dyn std::any::Any;
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any;
 }
 
 /// ## Discription
@@ -237,11 +367,14 @@ impl Commands {
     /// 
     /// fn __update__(&mut commands: Commands) {
     ///     let label = commands.find("Label1").unwrap();
-    ///     assert_eq!(qry!(label).text == "Hello, World!".to_string());
+    ///     assert_eq!(borrow!(label).text == "Hello, World!".to_string());
     /// }
     /// ```
-    pub fn find(&self, id: &str) -> Option<&ComponentPointer> {
-        self.active_components.iter()
-            .find(|x| qry!(x).component_id() == id.to_string())
+    pub fn find<T: Component + 'static>(&mut self, id: &str) -> Option<RefMut<'_, T>> {
+        let index = self.active_components
+            .iter()
+            .position(|x| x.borrow().component_id() == id)?;
+
+        self.active_components[index].safecast_ref::<T>()
     }
 }

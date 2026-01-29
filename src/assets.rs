@@ -16,32 +16,28 @@ impl Clone for Box<dyn Asset> {
     }
 }
 
-pub trait AsAny: std::any::Any {
-    fn as_any(&self) -> &dyn std::any::Any;
-}
-
-pub trait Cast<T> {
+pub trait AssetCast<T> {
     fn cast(&self) -> Option<&T>;
 }
 
-pub trait Safecast {
+pub trait AssetSafecast {
     fn safecast<T: 'static + Asset>(&self) -> Option<&T>;
 }
 
-impl Safecast for Box<dyn Asset> {
+impl AssetSafecast for Box<dyn Asset> {
     fn safecast<T: 'static + Asset>(&self) -> Option<&T> {
         self.as_any().downcast_ref::<T>()
     }
 }
 
-impl<T: 'static + Asset> Cast<T> for Box<dyn Asset> {
+impl<T: 'static + Asset> AssetCast<T> for Box<dyn Asset> {
     fn cast(&self) -> Option<&T> {
         self.as_any().downcast_ref::<T>()
     }
 }
 
 
-pub(in crate) trait AssetExt: Asset {
+pub trait AssetExt: Asset {
     fn is<T: std::any::Any>(&self) -> bool {
         self.as_any().type_id() == TypeId::of::<T>()
     }
@@ -77,6 +73,7 @@ static mut TEXTURES: LazyLock<Arc<Mutex<HashMap<String, Texture2D>>>> = LazyLock
 /// ```
 pub struct Assets;
 
+#[allow(static_mut_refs)]
 impl Assets {
     pub(in crate) unsafe fn get_texture_2d(res_name: &str) -> Option<Texture2D> {
         let mut res = res_name.to_string();
@@ -113,6 +110,7 @@ impl Assets {
             }
         }
 
+        println!("WARNING: Missing texture: {}", res_name);
         None
     }
 

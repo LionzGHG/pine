@@ -1,5 +1,6 @@
 use std::mem::MaybeUninit;
 
+use crate::math::Point;
 use crate::{Commands, Handle, Renderer};
 
 use sdl2::sys::{SDL_CreateRenderer, SDL_CreateWindow, SDL_Event, SDL_INIT_VIDEO, SDL_Init, SDL_PollEvent, SDL_RenderClear, SDL_RenderPresent, SDL_SetRenderDrawColor, SDL_Window};
@@ -52,7 +53,9 @@ pub struct Window {
     pub start: Option<Box<dyn Fn(&mut Commands)>>,
     pub update: Option<Box<dyn Fn(&mut Commands)>>,
 
-    pub on_key_down: Option<Box<dyn Fn(&mut Commands, i32)>>
+    pub on_key_down: Option<Box<dyn Fn(&mut Commands, i32)>>,
+    pub on_mouse_button_down: Option<Box<dyn Fn(&mut Commands, i32, Point)>>,
+    pub on_mouse_motion: Option<Box<dyn Fn(&mut Commands, Point)>>,
 }
 
 impl Window {
@@ -74,6 +77,8 @@ impl Window {
                 start: Some(Box::new(on_start)),
                 update: Some(Box::new(on_tick)),
                 on_key_down: None,
+                on_mouse_button_down: None,
+                on_mouse_motion: None,
             }
         }   
     }
@@ -100,6 +105,14 @@ impl Window {
     /// ```
     pub fn on_key_down<F: Fn(&mut Commands, i32) + 'static>(&mut self, f: F) {
         self.on_key_down = Some(Box::new(f));
+    }
+
+    pub fn on_mouse_button_down<F: Fn(&mut Commands, i32, Point) + 'static>(&mut self, f: F) {
+        self.on_mouse_button_down = Some(Box::new(f));
+    }
+
+    pub fn on_mouse_motion<F: Fn(&mut Commands, Point) + 'static>(&mut self, f: F) {
+        self.on_mouse_motion = Some(Box::new(f));
     }
 
     /// ## Description
@@ -155,6 +168,20 @@ impl Window {
                     if event.type_ == SDL_EventType::SDL_KEYDOWN as u32 {
                         if let Some(func) = &self.on_key_down {
                             func(&mut cmds, event.key.keysym.sym);
+                        }
+                    }
+
+                    // Handle mouse_button_down event
+                    if event.type_ == SDL_EventType::SDL_MOUSEBUTTONDOWN as u32 {
+                        if let Some(func) = &self.on_mouse_button_down {
+                            func(&mut cmds, event.button.button as i32, Point(event.button.x, event.button.y));
+                        }
+                    }
+
+                    // Handle mouse_motion event
+                    if event.type_ == SDL_EventType::SDL_MOUSEMOTION as u32 {
+                        if let Some(func) = &self.on_mouse_motion {
+                            func(&mut cmds, Point(event.motion.x, event.motion.y));
                         }
                     }
                 }

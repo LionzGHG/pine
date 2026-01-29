@@ -1,6 +1,8 @@
 
+use sdl2::sys::SDL_Texture;
+
 pub use crate::Attribute;
-use crate::assets::{Asset, AssetExt};
+use crate::{assets::{Asset, AssetExt}, math::Point};
 
 /// ## Description
 /// **Item-Type**: [Basic Attribute](crate::basic_attributes).
@@ -15,11 +17,12 @@ use crate::assets::{Asset, AssetExt};
 /// ```
 /// fn __key_callback__(commands: &mut Commands, keycode: i32) {
 ///     if keycode == KeyCode::UP {
-///         let player = commands.find("Player").unwrap();
-///         qry!(player).transform.position.x += 10; // player is an Actor
+///         let mut player = find!(commands, Actor, "Player");
+///         player.transform.position.x += 10; // player is an Actor
 ///     }
 /// }
 /// ```
+#[derive(Debug, Clone)]
 pub struct Transform {
     pub x: i32,
     pub y: i32,
@@ -35,6 +38,12 @@ impl Default for Transform {
             width: 100,
             height: 100,
         }
+    }
+}
+
+impl Transform {
+    pub fn as_point(&self) -> Point {
+        Point(self.x, self.y)
     }
 }
 
@@ -63,6 +72,10 @@ impl Texture2D {
         Self {
             file_path: file_path.into()
         }
+    }
+
+    pub fn get(&self) -> &str {
+        &self.file_path
     }
 }
 
