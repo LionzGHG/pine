@@ -164,6 +164,9 @@ macro_rules! find {
 ///     // --snip--
 /// }
 /// ```
+/// ## Deprecated Macro
+/// Just use `.clone()`, bro it ain't that deep.
+#[deprecated]
 #[macro_export]
 macro_rules! cpy {
     ($x:expr) => {
@@ -190,18 +193,77 @@ macro_rules! get {
     };
 }
 
+/// ## Description
+/// The [load] macro allows you to easily load a [global variable](Commands::global_variables) into the current scope.
+/// It's a shorthand for the [get_global_var](Commands::get_global_var) method of [Commands]:
+/// ```
+/// let var = commands.get_global_var::<i32>("counter").unwrap();
+/// ``` 
+/// Or using the `load!` macro:
+/// ```
+/// let var = load!(commands, i32, "counter");
+/// ```
+/// To upload a variable (**make a global variable**), use the [upload] macro.
+/// ## Example
+/// ```
+/// fn start(commands: &mut Commands) {
+///     let counter = 0u32;
+///     upload!(commands, &counter);
+/// }
+/// 
+/// fn update(commands: &mut Commands) {
+///     let counter = load!(commands, u32, "counter");
+///     if counter < 10 {
+///         *counter += 1;
+///     }
+/// }
+/// ```
+#[macro_export]
+macro_rules! load {
+    ($cmds:expr, $typeid:ty, $id:expr) => {
+        $cmds.get_global_var::<$typeid>($id).unwrap()
+    };
+}
+
+/// ## Description
+/// The [upload] macro allows you to easily upload a *local variable* to the [global variables](Commands::global_variables).
+/// A **global variable** is a variable, that you can retrieve from another foreign scope using the [load] macro.
+/// ## Example
+/// ```
+/// fn start(commands: &mut Commands) {
+///     let counter = 0u32;
+///     upload!(commands, &counter);
+/// }
+/// 
+/// fn update(commands: &mut Commands) {
+///     let counter = load!(commands, u32, "counter");
+///     if counter < 10 {
+///         *counter += 1;
+///     }
+/// }
+/// ```
+#[macro_export]
+macro_rules! upload {
+    ($cmds:expr, $var:expr) => {
+        $cmds.add_global_var(stringify!($var), $var);
+    };
+}
+
 use std::{mem::MaybeUninit};
 
 use sdl2::{sys::{SDL_CreateRenderer, SDL_CreateWindow, SDL_Event, SDL_INIT_VIDEO, SDL_Init, SDL_PollEvent, SDL_Renderer, SDL_Window}};
 use sdl2::sys::{SDL_CreateTextureFromSurface, SDL_DestroyRenderer, SDL_DestroyWindow, SDL_EventType, SDL_FreeSurface, SDL_LoadBMP_RW, SDL_Quit, SDL_RWFromFile, SDL_RWops, SDL_Surface, SDL_Texture, image};
 
 use crate::prelude::Texture2D;
-use crate::util::ComponentReferenceSafecast;
+use crate::util::{AnySafecast, ComponentReferenceSafecast};
 
 
 /// ## Description
 /// [Attributes](Attribute) are certain "traits" and "abilities" that [Components](Component) can expand on.
-pub trait Attribute {}
+pub trait Attribute {
+    fn as_any(&self) -> &dyn std::any::Any;
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any;
+}
 
 /// ## Description
 /// The [Handle] is the back bone of the [Window](window::Window) struct. It *handles* all processes
@@ -320,6 +382,7 @@ pub struct Commands {
     pub handle: Handle,
     pub renderer: Renderer,
     pub active_components: Vec<ComponentPointer>,
+    pub global_variables: Vec<(String, Rc<RefCell<dyn std::any::Any>>)>,
 }
 
 impl Commands {
@@ -376,5 +439,17 @@ impl Commands {
             .position(|x| x.borrow().component_id() == id)?;
 
         self.active_components[index].safecast_ref::<T>()
+    }
+
+    pub fn add_global_var<T: std::any::Any + Clone + 'static>(&mut self, id: impl Into<String>, var: &T) {
+        self.global_variables.push((id.into(), Rc::new(RefCell::new(var.clone()))));
+    }
+
+    pub fn get_global_var<T: std::any::Any + 'static>(&mut self, id: impl Into<String> + Clone) -> Option<RefMut<'_, T>> {
+        let index = self.global_variables
+            .iter()
+            .position(|x| x.0 == id.clone().into())?;
+
+        self.global_variables[index].1.safecast_ref::<T>()
     }
 }

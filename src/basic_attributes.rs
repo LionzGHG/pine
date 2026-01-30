@@ -91,5 +91,20 @@ impl Asset for Texture2D {
 
 impl AssetExt for Texture2D {}
 
-impl Attribute for Transform {}
-impl Attribute for Texture2D {}
+impl Attribute for Transform {
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self
+    }
+}
+
+impl Attribute for Texture2D {
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self
+    }
+}

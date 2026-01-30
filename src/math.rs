@@ -1,4 +1,6 @@
 
+/// # Description
+/// Mathematical construct to represent a point in 2d-space. 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Point(pub i32, pub i32);
 
@@ -11,6 +13,9 @@ impl Point {
         self.1
     }
 
+    /// ## Description
+    /// Calculate whether *this* point is contained within a rectangle, composed by the points `p1` (upper left corner) and
+    /// `p2` (bottom right corner). Returns `true` if that's the case.
     pub fn in_area(&self, p1: Point, p2: Point) -> bool {
         let min_x = p1.x().min(p2.x());
         let max_x = p1.x().max(p2.x());

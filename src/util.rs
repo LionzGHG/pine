@@ -1,7 +1,7 @@
 
 use std::{cell::{Ref, RefCell, RefMut}, rc::Rc};
 
-use crate::{Component, ComponentPointer};
+use crate::{Attribute, Commands, Component, ComponentPointer, upload};
 
 /// ## Description
 /// The [KeyCode] struct provides constants that are associated to the representing [i32]-value for the
@@ -32,6 +32,84 @@ impl KeyCode {
     pub const LMB: i32 = 1;
     pub const RMB: i32 = 3;
     // TODO
+}
+
+/// ## Description
+/// Implement the `Globalize` trait for your datatypes to access the [make_global](Globalize::make_global) method to instantly
+/// turn any object that inherits this trait into a [global variable](Commands::add_global_var).
+pub trait Globalize {
+    /// ## Description
+    /// This function turns any local variable into a global variable by adding it to the list of global variables of the
+    /// [Commands] control structure.
+    /// You can access global variables via. the [load](crate::load) macro or by using the [get_global_var](Commands::get_global_var) method of Commands.
+    /// ## Example
+    /// ```
+    /// fn start(commands: &mut Commands) {
+    ///     let counter = 0u32;
+    ///     counter.make_global(commands);
+    /// }
+    /// ```
+    fn make_global(&self, commands: &mut Commands);
+}
+
+impl Globalize for i32 {
+    fn make_global(&self, commands: &mut Commands) {
+        upload!(commands, self);
+    }
+}
+
+impl Globalize for f64 {
+    fn make_global(&self, commands: &mut Commands) {
+        upload!(commands, self);
+    }
+}
+
+impl Globalize for String {
+    fn make_global(&self, commands: &mut Commands) {
+        upload!(commands, self);
+    }
+}
+
+impl Globalize for u32 {
+    fn make_global(&self, commands: &mut Commands) {
+        upload!(commands, self);
+    }
+}
+
+pub trait AttributeSafecast {
+    fn safecast_ref<T: 'static + Attribute>(&self) -> Option<RefMut<'_, T>>;
+}
+
+impl AttributeSafecast for Rc<RefCell<dyn Attribute>> {
+    fn safecast_ref<T: 'static + Attribute>(&self) -> Option<RefMut<'_, T>> {
+        let borrow = self.borrow_mut();
+
+        if borrow.as_any().is::<T>() {
+            Some(RefMut::map(borrow, |c| {
+                c.as_any_mut().downcast_mut::<T>().unwrap()
+            }))
+        } else {
+            None
+        }
+    }
+}
+
+pub trait AnySafecast {
+    fn safecast_ref<T: 'static + std::any::Any>(&self) -> Option<RefMut<'_, T>>;
+}
+
+impl AnySafecast for Rc<RefCell<dyn std::any::Any + 'static>> {
+    fn safecast_ref<T: 'static + std::any::Any>(&self) -> Option<RefMut<'_, T>> {
+        let borrow = self.borrow_mut();
+
+        if borrow.is::<T>() {
+            Some(RefMut::map(borrow, |c| {
+                c.downcast_mut::<T>().unwrap()
+            }))
+        } else {
+            None
+        }
+    }
 }
 
 // ##### COMPONENT UTILS ##### 

@@ -148,7 +148,8 @@ impl Window {
         let mut cmds = Commands {
             handle: self.handle.clone(),
             renderer: self.renderer.clone(),
-            active_components: Vec::new()
+            active_components: Vec::new(),
+            global_variables: Vec::new()
         };
         ((self.start.as_ref()).unwrap())(&mut cmds);
 
