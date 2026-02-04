@@ -1,5 +1,5 @@
 
-use sdl2::sys::SDL_Texture;
+use sdl2::sys::{SDL_QueryTexture, SDL_Texture};
 
 pub use crate::Attribute;
 use crate::{assets::{Asset, AssetExt}, math::Point};
@@ -28,6 +28,7 @@ pub struct Transform {
     pub y: i32,
     pub width: usize,
     pub height: usize,
+    pub scale: f32,
 }
 
 impl Default for Transform {
@@ -35,8 +36,9 @@ impl Default for Transform {
         Self {
             x: 0,
             y: 0,
-            width: 100,
-            height: 100,
+            width: 0,
+            height: 0,
+            scale: 1.,
         }
     }
 }
@@ -44,6 +46,11 @@ impl Default for Transform {
 impl Transform {
     pub fn as_point(&self) -> Point {
         Point(self.x, self.y)
+    }
+
+    pub fn set_position(&mut self, p: Point) {
+        self.x = p.x();
+        self.y = p.y();
     }
 }
 
@@ -64,14 +71,31 @@ impl Transform {
 /// ```
 #[derive(Clone, Debug)]
 pub struct Texture2D {
-    file_path: String,
+    pub file_path: String,
+    pub sdl_texture: Option<*mut SDL_Texture>,
+    pub width: i32,
+    pub height: i32,
 }
 
 impl Texture2D {
     pub fn new(file_path: impl Into<String>) -> Self {
         Self {
-            file_path: file_path.into()
+            file_path: file_path.into(),
+            sdl_texture: None,
+            width: 0,
+            height: 0,
         }
+    }
+
+    pub unsafe fn query_texture_size(tex: *mut SDL_Texture) -> (i32, i32) {
+        let mut w = 0i32;
+        let mut h = 0i32;
+
+        if SDL_QueryTexture(tex, std::ptr::null_mut(), std::ptr::null_mut(), &mut w, &mut h) != 0 {
+            panic!("SDL_QueryTexture failed to query texture: '{:?}'", tex);
+        }
+
+        (w, h)
     }
 
     pub fn get(&self) -> &str {

@@ -72,6 +72,15 @@ use std::cell::{RefCell, RefMut};
 use std::ffi::CString;
 use std::rc::Rc;
 
+#[macro_export]
+macro_rules! drop {
+    ( $($e: expr),* ) => {
+        $(
+            drop($e);
+        )*
+    };
+}
+
 /// ## Description
 /// [Components](Component) in Pine are passed wrapped in an `Rc<RefCell<Component>>`-Pointer structure.
 /// Use the `make!` macro to easily create and wrap Components more efficiently **without exposing
@@ -255,7 +264,7 @@ use sdl2::{sys::{SDL_CreateRenderer, SDL_CreateWindow, SDL_Event, SDL_INIT_VIDEO
 use sdl2::sys::{SDL_CreateTextureFromSurface, SDL_DestroyRenderer, SDL_DestroyWindow, SDL_EventType, SDL_FreeSurface, SDL_LoadBMP_RW, SDL_Quit, SDL_RWFromFile, SDL_RWops, SDL_Surface, SDL_Texture, image};
 
 use crate::prelude::Texture2D;
-use crate::util::{AnySafecast, ComponentReferenceSafecast};
+use crate::util::{AnySafecast, ComponentReferenceSafecast, cstr_rb};
 
 
 /// ## Description
@@ -288,6 +297,39 @@ impl Renderer {
         self.0
     }
 
+    pub(in crate) unsafe fn get_or_create_texture(&self, texture: &mut Texture2D) -> *mut SDL_Texture {
+        if let Some(tex) = texture.sdl_texture {
+            return tex;
+        }
+
+        let cstr_path = CString::new(texture.file_path.as_str()).unwrap();
+
+        let rwops = SDL_RWFromFile(cstr_path.as_ptr(), cstr_rb());
+        if rwops.is_null() {
+            panic!("RENDERER: Failed to open texture file: {}", texture.get());
+        }
+
+        let surface = image::IMG_Load_RW(rwops, 1);
+        if surface.is_null() {
+            panic!("RENDERER: Failed to load BMP surface from file: {}", texture.get());
+        }
+
+        let tex = SDL_CreateTextureFromSurface(self.get(), surface);
+        if tex.is_null() {
+            panic!("RENDERER: Failed to create SDL_Texture from surface: {}", texture.get());
+        }
+
+        SDL_FreeSurface(surface);
+
+        let (w, h) = Texture2D::query_texture_size(tex);
+
+        texture.width = w;
+        texture.height = h;
+        texture.sdl_texture = Some(tex);
+        tex
+    }
+
+    #[deprecated]
     pub(in crate) unsafe fn texture_from_asset(&self, texture: &Texture2D) -> *mut SDL_Texture {
         let cstr_path = CString::new(texture.get()).unwrap();
 
@@ -324,6 +366,34 @@ impl Clone for Box<dyn Component> {
     }
 }
 
+/// ## Description
+/// **Components** are the most important unit of your game. Every game is made up of a set of components. The components
+/// are stored within the [Commands] control struct. Create components in your games [start](window::Window::start)-callback.
+/// 
+/// If you want your component to be renderable, you'll have to include that into the [render](Component::render) method of your component.
+/// Everything apart from rendering, that is, everything that does not need to be regenerated each tick goes into the
+/// [init](Component::init) method instead. 
+/// 
+/// The most important Component is the [Actor](basic_components::Actor) component, which is special in that it can take
+/// [Attributes](crate::Attribute) and affect how it acts in real time in the game world. 
+/// ## Super Components
+/// A **Super Component** is a wrapper struct around an [Component] (most of the time around [Actor](basic_components::Actor)) that
+/// takes the original component and builds on top of it (e.g. for Actor, include some attributes thus creating an **Actor blueprint**).
+/// ### Example
+/// ```
+/// pub struct Card(pub Rc<RefCell<Actor>>);
+/// 
+/// impl Card {
+///     pub fn new(id: &str, texture_path: &str, rank: Rank, suit: Suit) -> Card {
+///         let base_component = make!(Actor::new(id, texture_path));
+///         get!(base_component).add_attribute(rank, format!("{}_rank", id));
+///         get!(base_component).add_attribute(suit, format!("{}_suit", id));
+/// 
+///         Card(base_component)
+///     }
+/// }
+/// ```
+/// Here, `Card` is a super component for `Actor` that includes the custom defined `Rank` and `Suit` attributes.
 pub trait Component: std::any::Any {
     /// ## Description
     /// If you want your component to be renderable, you'll have to include that into the [render](Component::render) method of your component.
@@ -378,10 +448,12 @@ pub trait Component: std::any::Any {
 ///     println!("found label1 with text: {}", label.text);
 /// }
 /// ```
+#[derive(Clone)]
 pub struct Commands {
     pub handle: Handle,
     pub renderer: Renderer,
     pub active_components: Vec<ComponentPointer>,
+    pub window_bounds: (i32, i32),
     pub global_variables: Vec<(String, Rc<RefCell<dyn std::any::Any>>)>,
 }
 
@@ -451,5 +523,25 @@ impl Commands {
             .position(|x| x.0 == id.clone().into())?;
 
         self.global_variables[index].1.safecast_ref::<T>()
+    }
+
+    pub fn width(&self) -> i32 {
+        self.window_bounds.0
+    }
+
+    pub fn height(&self) -> i32 {
+        self.window_bounds.1
+    }
+
+    pub fn half_width(&self) -> i32 {
+        (self.window_bounds.0 / 2) as i32
+    }
+
+    pub fn half_height(&self) -> i32 {
+        (self.window_bounds.1 / 2) as i32
+    }
+
+    pub fn center(&self) -> (i32, i32) {
+        (self.half_width(), self.half_height())
     }
 }

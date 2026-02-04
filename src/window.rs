@@ -1,9 +1,10 @@
+use std::ffi::CString;
 use std::mem::MaybeUninit;
 
 use crate::math::Point;
 use crate::{Commands, Handle, Renderer};
 
-use sdl2::sys::{SDL_CreateRenderer, SDL_CreateWindow, SDL_Event, SDL_INIT_VIDEO, SDL_Init, SDL_PollEvent, SDL_RenderClear, SDL_RenderPresent, SDL_SetRenderDrawColor, SDL_Window};
+use sdl2::sys::{SDL_CreateRenderer, SDL_CreateWindow, SDL_Event, SDL_INIT_VIDEO, SDL_Init, SDL_PollEvent, SDL_RenderClear, SDL_RenderPresent, SDL_SetHint, SDL_SetRenderDrawColor, SDL_Window};
 use sdl2::sys::{SDL_DestroyRenderer, SDL_DestroyWindow, SDL_EventType, SDL_Quit};
 
 /// ## Description
@@ -145,14 +146,26 @@ impl Window {
 
     pub fn run(&mut self) {
         self.running = true;
+
         let mut cmds = Commands {
             handle: self.handle.clone(),
             renderer: self.renderer.clone(),
             active_components: Vec::new(),
+            window_bounds: (self.width as i32, self.height as i32),
             global_variables: Vec::new()
         };
+
+        unsafe {
+            SDL_SetHint(
+                CString::new("SDL_RENDER_SCALE_QUALITY").unwrap().as_ptr(),
+                CString::new("2").unwrap().as_ptr()
+            );
+        }
+
+        // Call start procedure
         ((self.start.as_ref()).unwrap())(&mut cmds);
 
+        // event handling
         let mut event = MaybeUninit::<SDL_Event>::uninit();
 
         while self.running {

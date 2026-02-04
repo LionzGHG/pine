@@ -1,7 +1,7 @@
 
 use std::{cell::{Ref, RefCell, RefMut}, rc::Rc};
 
-use crate::{Attribute, Commands, Component, ComponentPointer, upload};
+use crate::{Attribute, Commands, Component, ComponentPointer, math::Point, upload};
 
 /// ## Description
 /// The [KeyCode] struct provides constants that are associated to the representing [i32]-value for the
@@ -32,6 +32,16 @@ impl KeyCode {
     pub const LMB: i32 = 1;
     pub const RMB: i32 = 3;
     // TODO
+}
+
+pub trait ToPoint {
+    fn to_point(&self) -> Point;
+}
+
+impl ToPoint for (i32, i32) {
+    fn to_point(&self) -> Point {
+        Point(self.0, self.1)
+    }
 }
 
 /// ## Description
@@ -77,16 +87,29 @@ impl Globalize for u32 {
 }
 
 pub trait AttributeSafecast {
-    fn safecast_ref<T: 'static + Attribute>(&self) -> Option<RefMut<'_, T>>;
+    fn safecast_ref_mut<T: 'static + Attribute>(&self) -> Option<RefMut<'_, T>>;
+    fn safecast_ref<T: 'static + Attribute>(&self) -> Option<Ref<'_, T>>;
 }
 
 impl AttributeSafecast for Rc<RefCell<dyn Attribute>> {
-    fn safecast_ref<T: 'static + Attribute>(&self) -> Option<RefMut<'_, T>> {
+    fn safecast_ref_mut<T: 'static + Attribute>(&self) -> Option<RefMut<'_, T>> {
         let borrow = self.borrow_mut();
 
         if borrow.as_any().is::<T>() {
             Some(RefMut::map(borrow, |c| {
                 c.as_any_mut().downcast_mut::<T>().unwrap()
+            }))
+        } else {
+            None
+        }
+    }
+
+    fn safecast_ref<T: 'static + Attribute>(&self) -> Option<Ref<'_, T>> {
+        let borrow = self.borrow();
+
+        if borrow.as_any().is::<T>() {
+            Some(Ref::map(borrow, |c| {
+                c.as_any().downcast_ref::<T>().unwrap()
             }))
         } else {
             None
@@ -164,4 +187,9 @@ impl ComponentSafecast for Box<dyn Component> {
     fn safecast<T: 'static + Component>(&self) -> Option<&T> {
         self.as_any().downcast_ref::<T>()
     }
+}
+
+#[inline(always)]
+pub fn cstr_rb() -> *const i8 {
+    b"rb\0".as_ptr() as *const i8
 }

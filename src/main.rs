@@ -1,12 +1,18 @@
-use pine::prelude::*;
+use crate::poker::begin;
+
+
+pub mod poker;
 
 fn main() {
-    let mut window = Window::new("My Window", start, update);
-    window.on_key_down(on_key_down);
-    window.on_mouse_button_down(mouse_callback);
-    window.on_mouse_motion(mouse_motion);
-    window.run();
+    begin();
+    //let mut window = Window::new("My Window", start, update);
+    //window.on_key_down(on_key_down);
+    //window.on_mouse_button_down(mouse_callback);
+    //window.on_mouse_motion(mouse_motion);
+    //window.run();
 }
+
+/* 
 
 pub fn mouse_motion(_commands: &mut Commands, _current_pos: Point) {
     // ...
@@ -47,3 +53,5 @@ pub fn start(commands: &mut Commands) {
 } 
 
 pub fn update(commands: &mut Commands) {}
+
+*/

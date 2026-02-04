@@ -1,4 +1,4 @@
-use std::{cell::{RefCell, RefMut}, rc::Rc};
+use std::{cell::{Ref, RefCell, RefMut}, ptr::null, rc::Rc};
 
 use sdl2::sys::{SDL_Rect, SDL_RenderCopy, SDL_Texture};
 
@@ -76,12 +76,29 @@ impl Actor {
     ///     // -- snip --
     /// }
     /// ```
-    pub fn get_attribute<T: Attribute + 'static>(&self, id: &str) -> Option<RefMut<'_, T>> {
+    pub fn get_attribute<T: Attribute + 'static>(&self, id: &str) -> Option<Ref<'_, T>> {
         let index = self.attributes
             .iter()
             .position(|x| x.0 == id)?;
 
         self.attributes[index].1.safecast_ref::<T>()
+    }
+
+    pub fn get_attribute_mut<T: Attribute + 'static>(&self, id: &str) -> Option<RefMut<'_, T>> {
+        let index = self.attributes
+            .iter()
+            .position(|x| x.0 == id)?;
+
+        self.attributes[index].1.safecast_ref_mut::<T>()        
+    }
+
+    pub fn change_texture(&mut self, path_to_new_texture: impl Into<String>) {
+        let new_texture = Assets::get::<Texture2D>(path_to_new_texture.into().as_str()).unwrap();
+
+        self.transform.width = 0;
+        self.transform.height = 0;
+
+        self.texture = new_texture;
     }
 }
 
@@ -93,22 +110,22 @@ impl Component for Actor {
     fn init(&self, handle: &mut crate::Handle) {}
 
     fn render(&mut self, renderer: &mut crate::Renderer) {
-        let dstrect = SDL_Rect {
-            x: self.transform.x,
-            y: self.transform.y,
-            w: self.transform.width as i32,
-            h: self.transform.height as i32
-        };
-
         unsafe {
-            let sdl2_texture: *mut SDL_Texture = renderer.texture_from_asset(&self.texture);
-    
-            SDL_RenderCopy(
-                renderer.get(),
-                sdl2_texture,
-                std::ptr::null(),
-                &dstrect as *const SDL_Rect
-            );
+            let tex = renderer.get_or_create_texture(&mut self.texture);
+            
+            if self.transform.width == 0 || self.transform.height == 0 {
+                self.transform.width = (self.texture.width as f32 * self.transform.scale) as usize;
+                self.transform.height = (self.texture.height as f32 * self.transform.scale) as usize;
+            }
+
+            let dstrect = SDL_Rect {
+                x: self.transform.x,
+                y: self.transform.y, 
+                w: self.transform.width as i32,
+                h: self.transform.height as i32
+            };
+
+            SDL_RenderCopy(renderer.get(), tex, null(), &dstrect);
         }
     }
 
