@@ -36,8 +36,8 @@ impl Actor {
         }
     }
 
-    pub fn get_texture(&self) -> &Texture2D {
-        self.texture.as_ref().unwrap()
+    pub fn get_texture(&self) -> Option<&Texture2D> {
+        self.texture.as_ref()
     }
 
     pub fn set_material(&mut self, mat: Material) {

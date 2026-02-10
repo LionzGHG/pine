@@ -44,6 +44,17 @@ pub enum Rank {
     R0, R1, R2, R3, R4, R5, R6, R7, R8, R9, T, J, Q, K, A
 }
 
+impl Rank {
+    pub fn all() -> [Rank; 14] {
+        [
+            Rank::R1, Rank::R2, Rank::R3, Rank::R4, Rank::R5, 
+            Rank::R6, Rank::R7, 
+            Rank::R8, Rank::R9,
+            Rank::T, Rank::J, Rank::Q, Rank::K, Rank::A
+        ]
+    }
+}
+
 impl Attribute for Rank {
     fn as_any(&self) -> &dyn std::any::Any {
         self
@@ -58,6 +69,12 @@ pub enum Suit {
     Diamonds, Hearts, Spades, Clubs
 }
 
+impl Suit {
+    pub fn all() -> [Suit; 4] {
+        [Suit::Diamonds, Suit::Hearts, Suit::Spades, Suit::Clubs]
+    }
+}
+
 impl Attribute for Suit {
     fn as_any(&self) -> &dyn std::any::Any {
         self
@@ -67,6 +84,7 @@ impl Attribute for Suit {
     }
 }
 
+#[derive(Clone)]
 pub struct Card(pub Rc<RefCell<Actor>>);
 
 impl Card {

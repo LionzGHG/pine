@@ -477,6 +477,30 @@ impl Commands {
     }
 
     /// ## Description
+    /// Removes an active component from the list of active components, effectively destroying it and removing it
+    /// from the game scene.
+    /// ## Example
+    /// ```
+    /// fn on_start(commands: &mut Commands) {
+    ///     let actor = make!(Actor::new("My Actor", ""));
+    ///     commands.spawn(actor);
+    ///     
+    ///     if actor.get_texture().is_none() {
+    ///         commands.destroy("My Actor");
+    ///     }
+    /// }
+    /// ```
+    pub fn destroy(&mut self, id: impl Into<String> + Clone) {
+        let idx = self.active_components
+            .iter()
+            .position(|x| x.borrow().component_id() == id.clone().into());
+
+        if let Some(position) = idx {
+            self.active_components.remove(position);
+        }
+    }
+
+    /// ## Description
     /// The [update](Commands::update) method
     /// is automatically called each tick and calls each Components [render](Component::render) method for all the components
     /// within the active components. For more info, [click here](Commands::spawn).

@@ -11,3 +11,5 @@ pub use crate::Attribute;
 pub use crate::assets::{Asset, Assets};
 pub use crate::basic_attributes::{Transform, Texture2D};
 pub use crate::math::Point;
+pub use crate::math::Math;
+pub use std::cell::{RefMut, Ref};
