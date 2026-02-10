@@ -1,7 +1,6 @@
-use crate::poker::begin;
+use crate::game::begin;
 
-
-pub mod poker;
+pub mod game;
 
 fn main() {
     begin();

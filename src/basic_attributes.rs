@@ -1,8 +1,21 @@
 
-use sdl2::sys::{SDL_QueryTexture, SDL_Texture};
+use sdl2::{pixels::Color, sys::{SDL_QueryTexture, SDL_Texture}};
 
 pub use crate::Attribute;
 use crate::{assets::{Asset, AssetExt}, math::Point};
+
+#[derive(Debug, Clone)]
+pub struct Material {
+    pub color: Color,
+}
+
+impl Default for Material {
+    fn default() -> Self {
+        Material {
+            color: Color::RGB(255, 255, 255),
+        }
+    }
+}
 
 /// ## Description
 /// **Item-Type**: [Basic Attribute](crate::basic_attributes).

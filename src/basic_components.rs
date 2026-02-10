@@ -1,8 +1,8 @@
 use std::{cell::{Ref, RefCell, RefMut}, ptr::null, rc::Rc};
 
-use sdl2::sys::{SDL_Rect, SDL_RenderCopy, SDL_Texture};
+use sdl2::{pixels::Color, sys::{SDL_Rect, SDL_RenderCopy, SDL_RenderFillRect, SDL_SetRenderDrawColor, SDL_Texture}};
 
-use crate::{Attribute, Component, assets::Assets, basic_attributes::{Texture2D, Transform}, util::AttributeSafecast};
+use crate::{Attribute, Component, assets::Assets, basic_attributes::{Material, Texture2D, Transform}, util::AttributeSafecast};
 
 /// ## Description
 /// **Item-Type**. [Basic Component](crate::basic_components).
@@ -17,7 +17,8 @@ use crate::{Attribute, Component, assets::Assets, basic_attributes::{Texture2D, 
 pub struct Actor {
     pub id: String,
     pub transform: Transform,
-    pub texture: Texture2D,
+    pub texture: Option<Texture2D>,
+    pub material: Material,
     pub attributes: Vec<(String, Rc<RefCell<dyn Attribute>>)>,
 }
 
@@ -29,10 +30,23 @@ impl Actor {
         Self {
             id: id.into(),
             transform: Transform::default(),
-            texture: Assets::get::<Texture2D>(&texture_name.into()).expect("ACTOR: Failed to load texture!"),
+            texture: Assets::get::<Texture2D>(&texture_name.into()),
+            material: Material::default(),
             attributes: Vec::new()
         }
     }
+
+    pub fn get_texture(&self) -> &Texture2D {
+        self.texture.as_ref().unwrap()
+    }
+
+    pub fn set_material(&mut self, mat: Material) {
+        self.material = mat;
+    }
+
+    pub fn set_color(&mut self, color: Color) {
+        self.material.color = color;
+    } 
 
     /// ## Description
     /// This method allows you to add a new [Attribute] to an existing [Actor]. This attribute is then added to the actor's list
@@ -98,7 +112,7 @@ impl Actor {
         self.transform.width = 0;
         self.transform.height = 0;
 
-        self.texture = new_texture;
+        self.texture = Some(new_texture);
     }
 }
 
@@ -110,22 +124,39 @@ impl Component for Actor {
     fn init(&self, handle: &mut crate::Handle) {}
 
     fn render(&mut self, renderer: &mut crate::Renderer) {
-        unsafe {
-            let tex = renderer.get_or_create_texture(&mut self.texture);
+        if let Some(ref mut texture) = &mut self.texture {
+            unsafe {
+                let tex = renderer.get_or_create_texture(texture);
             
-            if self.transform.width == 0 || self.transform.height == 0 {
-                self.transform.width = (self.texture.width as f32 * self.transform.scale) as usize;
-                self.transform.height = (self.texture.height as f32 * self.transform.scale) as usize;
+                if self.transform.width == 0 || self.transform.height == 0 {
+                    self.transform.width = (texture.width as f32 * self.transform.scale) as usize;
+                    self.transform.height = (texture.height as f32 * self.transform.scale) as usize;
+                }
+
+                let dstrect = SDL_Rect {
+                    x: self.transform.x,
+                    y: self.transform.y, 
+                    w: self.transform.width as i32,
+                    h: self.transform.height as i32
+                };
+
+                SDL_RenderCopy(renderer.get(), tex, null(), &dstrect);
             }
+        } else {
+            unsafe {
+                let color = self.material.color;
 
-            let dstrect = SDL_Rect {
-                x: self.transform.x,
-                y: self.transform.y, 
-                w: self.transform.width as i32,
-                h: self.transform.height as i32
-            };
+                SDL_SetRenderDrawColor(renderer.get(), color.r, color.g, color.b, color.a);
+                
+                let rect = SDL_Rect {
+                    x: self.transform.x,
+                    y: self.transform.y,
+                    w: self.transform.width as i32,
+                    h: self.transform.height as i32,
+                };
 
-            SDL_RenderCopy(renderer.get(), tex, null(), &dstrect);
+                SDL_RenderFillRect(renderer.get(), &rect);
+            }
         }
     }
 
