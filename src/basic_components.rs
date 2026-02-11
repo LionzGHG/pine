@@ -128,17 +128,32 @@ impl Component for Actor {
             unsafe {
                 let tex = renderer.get_or_create_texture(texture);
             
-                if self.transform.width == 0 || self.transform.height == 0 {
-                    self.transform.width = (texture.width as f32 * self.transform.scale) as usize;
-                    self.transform.height = (texture.height as f32 * self.transform.scale) as usize;
-                }
+                let (w, h) = Texture2D::query_texture_size(tex);
+                let scale = renderer.world_scale;
+
+                let world_w = w as f32 * self.transform.scale;
+                let world_h = h as f32 * self.transform.scale;
+
+                let pixel_w = world_w * scale;
+                let pixel_h = world_h * scale;
+
+                let pixel_x = self.transform.x * scale - pixel_w / 2.0;
+                let pixel_y = self.transform.y * scale - pixel_h / 2.0;
 
                 let dstrect = SDL_Rect {
-                    x: self.transform.x,
-                    y: self.transform.y, 
-                    w: self.transform.width as i32,
-                    h: self.transform.height as i32
+                    x: pixel_x as i32,
+                    y: pixel_y as i32,
+                    w: pixel_w as i32,
+                    h: pixel_h as i32
                 };
+
+                // println!(
+                //     "scale={}, tex_w={}, world_w={}, pixel_w={}",
+                //     renderer.world_scale,
+                //     w,
+                //     world_w,
+                //     pixel_w
+                // );
 
                 SDL_RenderCopy(renderer.get(), tex, null(), &dstrect);
             }
@@ -148,11 +163,22 @@ impl Component for Actor {
 
                 SDL_SetRenderDrawColor(renderer.get(), color.r, color.g, color.b, color.a);
                 
+                let scale = renderer.world_scale;
+
+                let world_w = self.transform.width as f32 * self.transform.scale;
+                let world_h = self.transform.height as f32 * self.transform.scale;
+
+                let pixel_w = world_w * scale;
+                let pixel_h = world_h * scale;
+
+                let pixel_x = self.transform.x * scale - pixel_w / 2.0;
+                let pixel_y = self.transform.y * scale - pixel_h / 2.0;
+
                 let rect = SDL_Rect {
-                    x: self.transform.x,
-                    y: self.transform.y,
-                    w: self.transform.width as i32,
-                    h: self.transform.height as i32,
+                    x: pixel_x as i32,
+                    y: pixel_y as i32,
+                    w: pixel_w as i32,
+                    h: pixel_h as i32,
                 };
 
                 SDL_RenderFillRect(renderer.get(), &rect);

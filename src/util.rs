@@ -193,3 +193,19 @@ impl ComponentSafecast for Box<dyn Component> {
 pub fn cstr_rb() -> *const i8 {
     b"rb\0".as_ptr() as *const i8
 }
+
+pub trait Floatify {
+    fn floatify(&self) -> f32;
+}
+
+impl Floatify for f32 {
+    fn floatify(&self) -> f32 {
+        *self
+    }
+}
+
+impl Floatify for i32 {
+    fn floatify(&self) -> f32 {
+        *self as f32
+    }
+}

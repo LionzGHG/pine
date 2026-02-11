@@ -1,3 +1,17 @@
+use crate::util::Floatify;
+
+
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
+pub struct Vec2D {
+    pub x: f32,
+    pub y: f32,
+}
+
+impl Vec2D {
+    pub fn new(x: impl Floatify, y: impl Floatify) -> Vec2D {
+        Vec2D { x: x.floatify(), y: y.floatify() }
+    }
+}
 
 /// # Description
 /// Mathematical construct to represent a point in 2d-space. 

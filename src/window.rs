@@ -4,7 +4,7 @@ use std::mem::MaybeUninit;
 use crate::math::Point;
 use crate::{Commands, Handle, Renderer};
 
-use sdl2::sys::{SDL_CreateRenderer, SDL_CreateWindow, SDL_Event, SDL_INIT_VIDEO, SDL_Init, SDL_PollEvent, SDL_RenderClear, SDL_RenderPresent, SDL_SetHint, SDL_SetRenderDrawColor, SDL_Window};
+use sdl2::sys::{SDL_CreateRenderer, SDL_CreateWindow, SDL_Event, SDL_INIT_VIDEO, SDL_Init, SDL_PollEvent, SDL_RenderClear, SDL_RenderPresent, SDL_RenderSetLogicalSize, SDL_SetHint, SDL_SetRenderDrawColor, SDL_Window};
 use sdl2::sys::{SDL_DestroyRenderer, SDL_DestroyWindow, SDL_EventType, SDL_Quit};
 
 /// ## Description
@@ -46,6 +46,8 @@ pub struct Window {
     pub pos_y: usize,
     pub width: usize,
     pub height: usize,
+    pub logical_width: usize,
+    pub logical_height: usize,
     pub(in crate) handle: Handle,
     pub(in crate) renderer: Renderer,
     pub running: bool,
@@ -72,8 +74,10 @@ impl Window {
                 pos_y: 0,
                 width: 800,
                 height: 600,
+                logical_width: 800,
+                logical_height: 600,
                 handle: Handle(raw_handle),
-                renderer: Renderer(SDL_CreateRenderer(raw_handle, -1, 0)),
+                renderer: Renderer::new(SDL_CreateRenderer(raw_handle, -1, 0), 800, 600),
                 running: false,
                 start: Some(Box::new(on_start)),
                 update: Some(Box::new(on_tick)),
@@ -82,6 +86,20 @@ impl Window {
                 on_mouse_motion: None,
             }
         }   
+    }
+
+    pub fn set_logical_size(&mut self, width: usize, height: usize) {
+        let pixel_w = self.width as f32;
+        let pixel_h = self.height as f32;
+
+        let scale_x = pixel_w / self.logical_width as f32;
+        let scale_y = pixel_h / self.logical_height as f32;
+
+        self.renderer.world_scale = scale_x.min(scale_y);
+    }
+
+    pub fn logical_size(&self) -> (usize, usize) {
+        (self.logical_width, self.logical_height)
     }
 
     /// ## Description
@@ -128,7 +146,7 @@ impl Window {
 
         unsafe {
             SDL_DestroyWindow(self.handle.0);
-            SDL_DestroyRenderer(self.renderer.0);
+            SDL_DestroyRenderer(self.renderer.get());
 
             let new_raw_handle: *mut SDL_Window = SDL_CreateWindow(
                 self.title.as_ptr() as *const i8, 
@@ -140,7 +158,7 @@ impl Window {
             );
 
             self.handle = Handle(new_raw_handle);
-            self.renderer = Renderer(SDL_CreateRenderer(new_raw_handle, -1, 0))    
+            self.renderer = Renderer::new(SDL_CreateRenderer(new_raw_handle, -1, 0), width, height)    
         }
     }
 
@@ -151,9 +169,17 @@ impl Window {
             handle: self.handle.clone(),
             renderer: self.renderer.clone(),
             active_components: Vec::new(),
-            window_bounds: (self.width as i32, self.height as i32),
+            window_bounds: (self.logical_width as i32, self.logical_height as i32),
             global_variables: Vec::new()
         };
+
+        unsafe {
+            SDL_RenderSetLogicalSize(
+                self.renderer.get(),
+                self.logical_width as i32,
+                self.logical_height as i32
+            );
+        }
 
         unsafe {
             SDL_SetHint(

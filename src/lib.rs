@@ -290,11 +290,35 @@ pub struct Handle(pub(in crate) *mut SDL_Window);
 /// **Wrapper struct** for the actual [SDL_Renderer](sdl2::sys). Use the [get](Renderer::get) function to retrieve the
 /// actual sdl2 renderer instance as `*mut SDL_Renderer`.
 #[derive(Debug, Clone)]
-pub struct Renderer(pub(in crate) *mut SDL_Renderer);
+pub struct Renderer {
+    pub(in crate) renderer: *mut SDL_Renderer,
+    pub world_scale: f32,
+    pub logical_width: f32,
+    pub logical_height: f32,
+}
 
 impl Renderer {
+    pub(in crate) fn new(renderer: *mut SDL_Renderer, pixel_width: usize, pixel_height: usize) -> Self {
+        Self {
+            renderer,
+            world_scale: 1.0,
+            logical_width: pixel_width as f32,
+            logical_height: pixel_height as f32,
+        }
+    }
+
+    pub fn set_logical_size(&mut self, logical_w: f32, logical_h: f32, pixel_w: u32, pixel_h: u32) {
+        self.logical_width = logical_w;
+        self.logical_height = logical_h;
+
+        let scale_x = pixel_w as f32 / self.logical_width as f32;
+        let scale_y = pixel_h as f32 / self.logical_height as f32;
+
+        self.world_scale = scale_x.min(scale_y);
+    }
+
     pub(in crate) fn get(&self) -> *mut SDL_Renderer {
-        self.0
+        self.renderer
     }
 
     pub(in crate) unsafe fn get_or_create_texture(&self, texture: &mut Texture2D) -> *mut SDL_Texture {
@@ -567,5 +591,12 @@ impl Commands {
 
     pub fn center(&self) -> (i32, i32) {
         (self.half_width(), self.half_height())
+    }
+
+    pub fn set_logical_size(&mut self, logical_w: f32, logical_h: f32) {
+        let pixel_w = self.width() as u32;
+        let pixel_h = self.height() as u32;
+        
+        self.renderer.set_logical_size(logical_w, logical_h, pixel_w, pixel_h);
     }
 }

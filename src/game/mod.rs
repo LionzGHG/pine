@@ -11,6 +11,8 @@ pub fn begin() {
         on_start, 
         on_tick
     );
+
+    window.set_logical_size(10, 10);
     window.on_mouse_button_down(on_mouse_down);
 
     window.run();
@@ -25,22 +27,32 @@ fn on_mouse_down(commands: &mut Commands, _keycode: i32, _p: Point) {
 
     if let Some(card) = deck.pop() {
         let mut actor = get!(card.0);
-        actor.transform.x = 400;
-        actor.transform.y = 300;
+        
+        let (w, h) = commands.window_bounds;
+
+        actor.transform.x = w as f32 / 2.;
+        actor.transform.y = h as f32 / 2.;
+
+        actor.transform.scale = 0.001;
 
         *active_card = Some(card.clone());
     }
 }
 
 fn on_start(commands: &mut Commands) {
+    commands.set_logical_size(10., 10.);
+
     let mut deck = Vec::<Card>::new();
 
     for &rank in &Rank::all() {
         for &suit in &Suit::all() {
             let card = Card::new(&format!("{:?}_{:?}", rank, suit), "Card_Hidden", rank, suit);
 
-            get!(card.0).transform.x = 4;
-            get!(card.0).transform.y = 4;
+            let (w, h) = commands.window_bounds;
+            get!(card.0).transform.x = w as f32 / 2.;
+            get!(card.0).transform.y = h as f32 / 2.;
+
+            get!(card.0).transform.scale = 0.01;
 
             deck.push(card.clone());
             commands.spawn(card.0.clone());
@@ -54,17 +66,22 @@ fn on_start(commands: &mut Commands) {
 }
 
 fn on_tick(commands: &mut Commands) {
-    let mut active_card = load!(commands, Option<Card>, "active_card");
+    let mut tmp = commands.clone();
+    let mut active_card = load!(&mut tmp, Option<Card>, "active_card");
 
     if let Some(card) = active_card.clone() {
         let mut actor = get!(card.0);
 
-        actor.transform.x = Math::lerp(actor.transform.x as f32, 4.0, 0.1) as i32;
-        actor.transform.y = Math::lerp(actor.transform.y as f32, 5.5, 0.1) as i32;
+        let (w, h) = commands.window_bounds;
+        let target_x = w as f32 / 2.;
+        let target_y = h as f32 / 2.0 + 2.0;
 
-        if (actor.transform.x as f32 - 4.0).abs() < 1.0 && (actor.transform.y as f32 - 5.5).abs() < 1.0 {
-            actor.transform.x = 4;
-            actor.transform.y = 5;
+        actor.transform.x = Math::lerp(actor.transform.x, target_x, 0.1);
+        actor.transform.y = Math::lerp(actor.transform.y, target_y, 0.1);
+
+        if (actor.transform.x - target_x).abs() < 0.01 && (actor.transform.y - target_y).abs() < 0.01 {
+            actor.transform.x = 4.;
+            actor.transform.y = 5.;
             *active_card = None;
         }
     }

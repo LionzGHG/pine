@@ -2,7 +2,7 @@
 use sdl2::{pixels::Color, sys::{SDL_QueryTexture, SDL_Texture}};
 
 pub use crate::Attribute;
-use crate::{assets::{Asset, AssetExt}, math::Point};
+use crate::{assets::{Asset, AssetExt}, math::{Point, Vec2D}, util::Floatify};
 
 #[derive(Debug, Clone)]
 pub struct Material {
@@ -37,18 +37,18 @@ impl Default for Material {
 /// ```
 #[derive(Debug, Clone)]
 pub struct Transform {
-    pub x: i32,
-    pub y: i32,
-    pub width: usize,
-    pub height: usize,
+    pub x: f32,
+    pub y: f32,
+    pub width: i32,
+    pub height: i32,
     pub scale: f32,
 }
 
 impl Default for Transform {
     fn default() -> Self {
         Self {
-            x: 0,
-            y: 0,
+            x: 0.,
+            y: 0.,
             width: 0,
             height: 0,
             scale: 1.,
@@ -58,12 +58,12 @@ impl Default for Transform {
 
 impl Transform {
     pub fn as_point(&self) -> Point {
-        Point(self.x, self.y)
+        Point(self.x as i32, self.y as i32)
     }
 
-    pub fn set_position(&mut self, p: Point) {
-        self.x = p.x();
-        self.y = p.y();
+    pub fn set_position(&mut self, v: Vec2D) {
+        self.x = v.x;
+        self.y = v.y;
     }
 }
 
