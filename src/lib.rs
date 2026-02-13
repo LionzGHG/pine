@@ -72,6 +72,51 @@ use std::cell::{RefCell, RefMut};
 use std::ffi::CString;
 use std::rc::Rc;
 
+thread_local! {
+    static ACTIVE_COMMANDS: RefCell<Option<*mut Commands>> = const { RefCell::new(None) };
+}
+
+pub struct Engine;
+
+impl Engine {
+    pub(crate) fn set_active_commands(commands: Option<*mut Commands>) {
+        ACTIVE_COMMANDS.with(|slot| {
+            *slot.borrow_mut() = commands;
+        });
+    }
+
+    pub fn get_active_commands() -> &'static mut Commands {
+        ACTIVE_COMMANDS.with(|slot| {
+            let ptr = (*slot.borrow()).unwrap();
+            unsafe {
+                ptr.as_mut().unwrap()
+            }
+        })
+    }
+
+    pub fn with_commands_static<R>(f: impl FnOnce(&'static mut Commands) -> R) -> Option<R> {
+        let commands = Engine::get_active_commands();
+        Some(f(commands))
+    }
+
+    /// Runs a closure with the currently active [`Commands`] context.
+    ///
+    /// This is useful in callbacks that intentionally avoid `&mut Commands`
+    /// in their function signature, e.g. when using [`Window::new_no_commands`]
+    /// or `on_*_no_commands` hooks.
+    ///
+    /// Returns `None` when called outside of [`Window::run`](window::Window::run).
+    pub fn with_commands<R>(f: impl FnOnce(&mut Commands) -> R) -> Option<R> {
+        ACTIVE_COMMANDS.with(|slot| {
+            let ptr = (*slot.borrow())?;
+            // SAFETY: The pointer is only set by Window::run while the Commands value is alive.
+            Some(unsafe { f(&mut *ptr) })
+        })
+    }
+}
+
+
+
 #[macro_export]
 macro_rules! drop {
     ( $($e: expr),* ) => {

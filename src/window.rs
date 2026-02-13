@@ -2,7 +2,7 @@ use std::ffi::CString;
 use std::mem::MaybeUninit;
 
 use crate::math::Point;
-use crate::{Commands, Handle, Renderer};
+use crate::{Commands, Handle, Renderer, Engine};
 
 use sdl2::sys::{SDL_CreateRenderer, SDL_CreateWindow, SDL_Event, SDL_INIT_VIDEO, SDL_Init, SDL_PollEvent, SDL_RenderClear, SDL_RenderPresent, SDL_RenderSetLogicalSize, SDL_SetHint, SDL_SetRenderDrawColor, SDL_Window};
 use sdl2::sys::{SDL_DestroyRenderer, SDL_DestroyWindow, SDL_EventType, SDL_Quit};
@@ -55,10 +55,16 @@ pub struct Window {
     // Event Handling
     pub start: Option<Box<dyn Fn(&mut Commands)>>,
     pub update: Option<Box<dyn Fn(&mut Commands)>>,
+    pub start_no_commands: Option<Box<dyn Fn()>>,
+    pub update_no_commands: Option<Box<dyn Fn()>>,
 
     pub on_key_down: Option<Box<dyn Fn(&mut Commands, i32)>>,
     pub on_mouse_button_down: Option<Box<dyn Fn(&mut Commands, i32, Point)>>,
     pub on_mouse_motion: Option<Box<dyn Fn(&mut Commands, Point)>>,
+
+    pub on_key_down_no_commands: Option<Box<dyn Fn(i32)>>,
+    pub on_mouse_button_down_no_commands: Option<Box<dyn Fn(i32, Point)>>,
+    pub on_mouse_motion_no_commands: Option<Box<dyn Fn(Point)>>,
 }
 
 impl Window {
@@ -81,11 +87,48 @@ impl Window {
                 running: false,
                 start: Some(Box::new(on_start)),
                 update: Some(Box::new(on_tick)),
+                start_no_commands: None,
+                update_no_commands: None,
                 on_key_down: None,
                 on_mouse_button_down: None,
                 on_mouse_motion: None,
+                on_key_down_no_commands: None,
+                on_mouse_button_down_no_commands: None,
+                on_mouse_motion_no_commands: None
             }
         }   
+    }
+
+    pub fn new_no_commands(title: &str, on_start: impl Fn() + 'static, on_tick: impl Fn() + 'static) -> Window {
+        unsafe {
+            SDL_Init(SDL_INIT_VIDEO);
+
+            let raw_handle: *mut SDL_Window =
+                SDL_CreateWindow(title.as_ptr() as *const i8, 400, 400, 800, 600, 0);
+
+            Window {
+                title: title.to_string().clone(),
+                pos_x: 0,
+                pos_y: 0,
+                width: 800,
+                height: 600,
+                logical_width: 800,
+                logical_height: 600,
+                handle: Handle(raw_handle),
+                renderer: Renderer::new(SDL_CreateRenderer(raw_handle, -1, 0), 800, 600),
+                running: false,
+                start: None,
+                update: None,
+                start_no_commands: Some(Box::new(on_start)),
+                update_no_commands: Some(Box::new(on_tick)),
+                on_key_down: None,
+                on_key_down_no_commands: None,
+                on_mouse_button_down: None,
+                on_mouse_button_down_no_commands: None,
+                on_mouse_motion: None,
+                on_mouse_motion_no_commands: None,
+            }
+        }
     }
 
     pub fn set_logical_size(&mut self, width: usize, height: usize) {
@@ -126,12 +169,24 @@ impl Window {
         self.on_key_down = Some(Box::new(f));
     }
 
+    pub fn on_key_down_no_commands<F: Fn(i32) + 'static>(&mut self, f: F) {
+        self.on_key_down_no_commands = Some(Box::new(f));
+    }
+
     pub fn on_mouse_button_down<F: Fn(&mut Commands, i32, Point) + 'static>(&mut self, f: F) {
         self.on_mouse_button_down = Some(Box::new(f));
     }
 
+    pub fn on_mouse_button_down_no_commands<F: Fn(i32, Point) + 'static>(&mut self, f: F) {
+        self.on_mouse_button_down_no_commands = Some(Box::new(f));
+    }
+
     pub fn on_mouse_motion<F: Fn(&mut Commands, Point) + 'static>(&mut self, f: F) {
         self.on_mouse_motion = Some(Box::new(f));
+    }
+
+    pub fn on_mouse_motion_no_commands<F: Fn(Point) + 'static>(&mut self, f: F) {
+        self.on_mouse_motion_no_commands = Some(Box::new(f));
     }
 
     /// ## Description
@@ -149,12 +204,12 @@ impl Window {
             SDL_DestroyRenderer(self.renderer.get());
 
             let new_raw_handle: *mut SDL_Window = SDL_CreateWindow(
-                self.title.as_ptr() as *const i8, 
-                self.pos_x as i32, 
-                self.pos_y as i32, 
-                self.width as i32, 
-                self.height as i32, 
-                0
+                self.title.as_ptr() as *const i8,
+                self.pos_x as i32,
+                self.pos_y as i32,
+                self.width as i32,
+                self.height as i32,
+                0,
             );
 
             self.handle = Handle(new_raw_handle);
@@ -170,8 +225,10 @@ impl Window {
             renderer: self.renderer.clone(),
             active_components: Vec::new(),
             window_bounds: (self.logical_width as i32, self.logical_height as i32),
-            global_variables: Vec::new()
+            global_variables: Vec::new(),
         };
+
+        Engine::set_active_commands(Some(&mut cmds as *mut Commands));
 
         unsafe {
             SDL_RenderSetLogicalSize(
@@ -189,7 +246,12 @@ impl Window {
         }
 
         // Call start procedure
-        ((self.start.as_ref()).unwrap())(&mut cmds);
+        if let Some(start) = &self.start {
+            start(&mut cmds);
+        }
+        if let Some(start) = &self.start_no_commands {
+            start();
+        }
 
         // event handling
         let mut event = MaybeUninit::<SDL_Event>::uninit();
@@ -209,6 +271,10 @@ impl Window {
                         if let Some(func) = &self.on_key_down {
                             func(&mut cmds, event.key.keysym.sym);
                         }
+
+                        if let Some(func) = &self.on_key_down_no_commands {
+                            func(event.key.keysym.sym);
+                        }
                     }
 
                     // Handle mouse_button_down event
@@ -216,12 +282,20 @@ impl Window {
                         if let Some(func) = &self.on_mouse_button_down {
                             func(&mut cmds, event.button.button as i32, Point(event.button.x, event.button.y));
                         }
+
+                        if let Some(func) = &self.on_mouse_button_down_no_commands {
+                            func(event.button.button as i32, Point(event.button.x, event.button.y));
+                        }
                     }
 
                     // Handle mouse_motion event
                     if event.type_ == SDL_EventType::SDL_MOUSEMOTION as u32 {
                         if let Some(func) = &self.on_mouse_motion {
                             func(&mut cmds, Point(event.motion.x, event.motion.y));
+                        }
+
+                        if let Some(func) = &self.on_mouse_motion_no_commands {
+                            func(Point(event.motion.x, event.motion.y));
                         }
                     }
                 }
@@ -235,12 +309,19 @@ impl Window {
                     cmds.update(active_component.clone());
                 }
             
-                ((self.update.as_ref()).unwrap())(&mut cmds);
+                if let Some(update) = &self.update {
+                    update(&mut cmds);
+                }
 
+                if let Some(update) = &self.update_no_commands {
+                    update();
+                }
 
                 SDL_RenderPresent(self.renderer.get());
             }
         }
+
+        Engine::set_active_commands(None);
 
         unsafe {
             SDL_DestroyRenderer(self.renderer.get());
