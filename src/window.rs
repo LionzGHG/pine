@@ -2,6 +2,7 @@ use std::ffi::CString;
 use std::mem::MaybeUninit;
 
 use crate::math::Point;
+use crate::util::RuntimeException;
 use crate::{Commands, Handle, Renderer, Engine};
 
 use sdl2::sys::{SDL_CreateRenderer, SDL_CreateWindow, SDL_Event, SDL_INIT_VIDEO, SDL_Init, SDL_PollEvent, SDL_RenderClear, SDL_RenderPresent, SDL_RenderSetLogicalSize, SDL_SetHint, SDL_SetRenderDrawColor, SDL_Window};
@@ -53,22 +54,22 @@ pub struct Window {
     pub running: bool,
 
     // Event Handling
-    pub start: Option<Box<dyn Fn(&mut Commands)>>,
-    pub update: Option<Box<dyn Fn(&mut Commands)>>,
-    pub start_no_commands: Option<Box<dyn Fn()>>,
-    pub update_no_commands: Option<Box<dyn Fn()>>,
+    pub start: Option<Box<dyn Fn(&mut Commands) -> Result<(), RuntimeException>>>,
+    pub update: Option<Box<dyn Fn(&mut Commands) -> Result<(), RuntimeException>>>,
+    pub start_no_commands: Option<Box<dyn Fn() -> Result<(), RuntimeException>>>,
+    pub update_no_commands: Option<Box<dyn Fn() -> Result<(), RuntimeException>>>,
 
-    pub on_key_down: Option<Box<dyn Fn(&mut Commands, i32)>>,
-    pub on_mouse_button_down: Option<Box<dyn Fn(&mut Commands, i32, Point)>>,
-    pub on_mouse_motion: Option<Box<dyn Fn(&mut Commands, Point)>>,
+    pub on_key_down: Option<Box<dyn Fn(&mut Commands, i32) -> Result<(), RuntimeException>>>,
+    pub on_mouse_button_down: Option<Box<dyn Fn(&mut Commands, i32, Point) -> Result<(), RuntimeException>>>,
+    pub on_mouse_motion: Option<Box<dyn Fn(&mut Commands, Point) -> Result<(), RuntimeException>>>,
 
-    pub on_key_down_no_commands: Option<Box<dyn Fn(i32)>>,
-    pub on_mouse_button_down_no_commands: Option<Box<dyn Fn(i32, Point)>>,
-    pub on_mouse_motion_no_commands: Option<Box<dyn Fn(Point)>>,
+    pub on_key_down_no_commands: Option<Box<dyn Fn(i32) -> Result<(), RuntimeException>>>,
+    pub on_mouse_button_down_no_commands: Option<Box<dyn Fn(i32, Point) -> Result<(), RuntimeException>>>,
+    pub on_mouse_motion_no_commands: Option<Box<dyn Fn(Point) -> Result<(), RuntimeException>>>,
 }
 
 impl Window {
-    pub fn new(title: &str, on_start: impl Fn(&mut Commands) + 'static, on_tick: impl Fn(&mut Commands) + 'static) -> Window {
+    pub fn new(title: &str, on_start: impl Fn(&mut Commands) -> Result<(), RuntimeException> + 'static, on_tick: impl Fn(&mut Commands) -> Result<(), RuntimeException> + 'static) -> Window {
         unsafe {
             SDL_Init(SDL_INIT_VIDEO);
 
@@ -99,7 +100,7 @@ impl Window {
         }   
     }
 
-    pub fn new_no_commands(title: &str, on_start: impl Fn() + 'static, on_tick: impl Fn() + 'static) -> Window {
+    pub fn new_no_commands(title: &str, on_start: impl Fn() -> Result<(), RuntimeException> + 'static, on_tick: impl Fn() -> Result<(), RuntimeException> + 'static) -> Window {
         unsafe {
             SDL_Init(SDL_INIT_VIDEO);
 
@@ -132,6 +133,9 @@ impl Window {
     }
 
     pub fn set_logical_size(&mut self, width: usize, height: usize) {
+        self.renderer.logical_width = width as f32;
+        self.renderer.logical_height = height as f32;
+
         let pixel_w = self.width as f32;
         let pixel_h = self.height as f32;
 
@@ -165,27 +169,47 @@ impl Window {
     ///     }
     /// }
     /// ```
-    pub fn on_key_down<F: Fn(&mut Commands, i32) + 'static>(&mut self, f: F) {
+    pub fn on_key_down<F: Fn(&mut Commands, i32) -> Result<(), RuntimeException> + 'static>(&mut self, f: F) {
         self.on_key_down = Some(Box::new(f));
     }
 
-    pub fn on_key_down_no_commands<F: Fn(i32) + 'static>(&mut self, f: F) {
+    /// ## Description
+    /// [`on_key_down_no_commands`](Window::on_key_down_no_commands) allows you to specify a method that runs every time a key press is performed and recognized.
+    /// 
+    /// The **key down callback function** allows you to access the `keycode` of
+    /// the pressed key. You can use `if` to compare this `i32`-value to an existing [KeyCode](crate::util::KeyCode).
+    /// ## Example
+    /// ```
+    /// fn main() {
+    ///     let mut window = Window::new_no_commands("My Window", __start__, __update__);
+    ///     window.on_key_down_no_commands(__key_callback__);
+    ///        
+    ///     window.run();
+    /// }
+    /// 
+    /// fn __key_callback__(keycode: i32) -> Result<(), RuntimeException> {
+    ///     if keycode == KeyCode::SPACE {
+    ///         println!("Spacebar pressed!")
+    ///     }
+    /// }
+    /// ```
+    pub fn on_key_down_no_commands<F: Fn(i32) -> Result<(), RuntimeException> + 'static>(&mut self, f: F) {
         self.on_key_down_no_commands = Some(Box::new(f));
     }
 
-    pub fn on_mouse_button_down<F: Fn(&mut Commands, i32, Point) + 'static>(&mut self, f: F) {
+    pub fn on_mouse_button_down<F: Fn(&mut Commands, i32, Point) -> Result<(), RuntimeException> + 'static>(&mut self, f: F) {
         self.on_mouse_button_down = Some(Box::new(f));
     }
 
-    pub fn on_mouse_button_down_no_commands<F: Fn(i32, Point) + 'static>(&mut self, f: F) {
+    pub fn on_mouse_button_down_no_commands<F: Fn(i32, Point) -> Result<(), RuntimeException> + 'static>(&mut self, f: F) {
         self.on_mouse_button_down_no_commands = Some(Box::new(f));
     }
 
-    pub fn on_mouse_motion<F: Fn(&mut Commands, Point) + 'static>(&mut self, f: F) {
+    pub fn on_mouse_motion<F: Fn(&mut Commands, Point) -> Result<(), RuntimeException> + 'static>(&mut self, f: F) {
         self.on_mouse_motion = Some(Box::new(f));
     }
 
-    pub fn on_mouse_motion_no_commands<F: Fn(Point) + 'static>(&mut self, f: F) {
+    pub fn on_mouse_motion_no_commands<F: Fn(Point) -> Result<(), RuntimeException> + 'static>(&mut self, f: F) {
         self.on_mouse_motion_no_commands = Some(Box::new(f));
     }
 
@@ -224,7 +248,8 @@ impl Window {
             handle: self.handle.clone(),
             renderer: self.renderer.clone(),
             active_components: Vec::new(),
-            window_bounds: (self.logical_width as i32, self.logical_height as i32),
+            window_bounds: (self.width as i32, self.height as i32),
+            world_size: (self.renderer.logical_width, self.renderer.logical_height),
             global_variables: Vec::new(),
         };
 
@@ -245,12 +270,20 @@ impl Window {
             );
         }
 
+        let mut error_stack = Vec::<RuntimeException>::new();
+
         // Call start procedure
         if let Some(start) = &self.start {
-            start(&mut cmds);
+            let err = start(&mut cmds);
+            if let Err(re) = err {
+                error_stack.push(re);
+            } 
         }
         if let Some(start) = &self.start_no_commands {
-            start();
+            let err = start();
+            if let Err(re) = err {
+                error_stack.push(re);
+            }
         }
 
         // event handling
@@ -269,33 +302,51 @@ impl Window {
                     // Handle on_key_down event
                     if event.type_ == SDL_EventType::SDL_KEYDOWN as u32 {
                         if let Some(func) = &self.on_key_down {
-                            func(&mut cmds, event.key.keysym.sym);
+                            let err = func(&mut cmds, event.key.keysym.sym);
+                            if let Err(re) = err {
+                                error_stack.push(re);
+                            }
                         }
 
                         if let Some(func) = &self.on_key_down_no_commands {
-                            func(event.key.keysym.sym);
+                            let err = func(event.key.keysym.sym);
+                            if let Err(re) = err {
+                                error_stack.push(re);
+                            }
                         }
                     }
 
                     // Handle mouse_button_down event
                     if event.type_ == SDL_EventType::SDL_MOUSEBUTTONDOWN as u32 {
                         if let Some(func) = &self.on_mouse_button_down {
-                            func(&mut cmds, event.button.button as i32, Point(event.button.x, event.button.y));
+                            let err = func(&mut cmds, event.button.button as i32, Point(event.button.x, event.button.y));
+                            if let Err(re) = err {
+                                error_stack.push(re);
+                            }
                         }
 
                         if let Some(func) = &self.on_mouse_button_down_no_commands {
-                            func(event.button.button as i32, Point(event.button.x, event.button.y));
+                            let err = func(event.button.button as i32, Point(event.button.x, event.button.y));
+                            if let Err(re) = err {
+                                error_stack.push(re);
+                            }
                         }
                     }
 
                     // Handle mouse_motion event
                     if event.type_ == SDL_EventType::SDL_MOUSEMOTION as u32 {
                         if let Some(func) = &self.on_mouse_motion {
-                            func(&mut cmds, Point(event.motion.x, event.motion.y));
+                            let err = func(&mut cmds, Point(event.motion.x, event.motion.y));
+                            if let Err(re) = err {
+                                error_stack.push(re);
+                            }
                         }
 
                         if let Some(func) = &self.on_mouse_motion_no_commands {
-                            func(Point(event.motion.x, event.motion.y));
+                            let err = func(Point(event.motion.x, event.motion.y));
+                            if let Err(re) = err {
+                                error_stack.push(re);
+                            }
                         }
                     }
                 }
@@ -310,11 +361,24 @@ impl Window {
                 }
             
                 if let Some(update) = &self.update {
-                    update(&mut cmds);
+                    let err = update(&mut cmds);
+                    if let Err(re) = err {
+                        error_stack.push(re);
+                    }
                 }
 
                 if let Some(update) = &self.update_no_commands {
-                    update();
+                    let err=  update();
+                    if let Err(re) = err {
+                        error_stack.push(re);
+                    }
+                }
+
+                if error_stack.len() > 0 {
+                    for error in &error_stack {
+                        error.emit();
+                        panic!("[Pine] failed with {} errors.", error_stack.len());
+                    }
                 }
 
                 SDL_RenderPresent(self.renderer.get());

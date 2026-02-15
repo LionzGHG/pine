@@ -7,26 +7,24 @@ pub mod poker_utils;
 
 pub fn begin() {
     let mut window = Window::new_no_commands("My Window", start, update);
-    window.set_logical_size(10, 10);
     window.on_mouse_button_down_no_commands(on_mouse);
     window.run();
 }
 
-fn on_mouse(key: i32, _p: Point) {
-    let mut deck = Engine::with_commands_static(|commands: &'static mut Commands| {
-        commands.get_global_var::<Vec<Card>>("deck").unwrap()
-    }).unwrap();
+fn on_mouse(_key: i32, _p: Point) -> Result<(), RuntimeException> {
+    let mut deck = Engine::get_global_var::<Vec<Card>>("deck");
+    let mut active_card = Engine::get_global_var::<Option<Card>>("active_card");
 
-    let mut active_card = Engine::with_commands_static(|commands| {
-        commands.get_global_var::<Option<Card>>("active_card").unwrap()
-    }).unwrap();
-
-    if let Some(card) = deck.pop() {
-        *active_card = Some(card.clone());
+    if active_card.is_none() {
+        if let Some(card) = deck.pop() {
+            *active_card = Some(card.clone());
+        }
     }
+
+    Ok(())
 }
 
-fn start() {
+fn start() -> Result<(), RuntimeException> {
     let mut deck = Vec::<Card>::new();
 
     for &rank in &Rank::all() {
@@ -38,49 +36,42 @@ fn start() {
                 suit
             );
 
-            let (w, h) = Engine::with_commands(|commands| {
-                commands.window_bounds
-            }).unwrap();
-
-            get!(card.0).transform.x = w as f32 / 2.;
-            get!(card.0).transform.y = h as f32 / 2.;
+            let (w, h) = Engine::get_world_size();
+            get!(card.0).transform.x = w / 2.;
+            get!(card.0).transform.y = h / 2.;
 
             get!(card.0).transform.scale = 0.1;
 
             deck.push(card.clone());
-            Engine::with_commands(move |commands| {
-                commands.spawn(card.0.clone());
-            });
+            Engine::spawn(card.0)?;
         }
     }
 
-    Engine::with_commands(move |commands| {
-        commands.add_global_var("deck", &deck);
-    });
+    Engine::add_global_var("deck", &deck)?;
 
     let active_card: Option<Card> = None;
-    Engine::with_commands(move |commands| {
-        commands.add_global_var("active_card", &active_card);
-    });
+    Engine::add_global_var("active_card", &active_card)?;
+
+    Ok(())
 }
 
-fn update() {
-    let mut active_card = Engine::with_commands_static(|cmds| {
-        cmds.get_global_var::<Option<Card>>("active_card").unwrap()
-    }).unwrap();
+fn update() -> Result<(), RuntimeException> {
+    let mut active_card = Engine::get_global_var::<Option<Card>>("active_card");
 
     if let Some(card) = active_card.clone() {
         let mut actor = get!(card.0);
 
-        let (w, h) = Engine::with_commands(|cmds| cmds.window_bounds).unwrap();
-        let target_x = w as f32 / 2.;
-        let target_y = h as f32 / 2. + 100.;
+        let (w, h) = Engine::get_world_size();
+        let target_x = w / 2.;
+        let target_y = h / 2. + 100.;
 
-        actor.transform.x = Math::lerp(actor.transform.x, target_x, 0.001);
-        actor.transform.y = Math::lerp(actor.transform.y, target_y, 0.001);
+        actor.transform.x = Math::lerp(actor.transform.x, target_x, 0.01);
+        actor.transform.y = Math::lerp(actor.transform.y, target_y, 0.01);
 
-        if (actor.transform.x - target_x).abs() < 0.01 && (actor.transform.y - target_y).abs() < 0.01 {
+        if (actor.transform.x - target_x).abs() < 0.1 && (actor.transform.y - target_y).abs() < 0.1 {
             *active_card = None;
         }
     }
+
+    Ok(())
 }

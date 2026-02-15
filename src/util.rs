@@ -209,3 +209,38 @@ impl Floatify for i32 {
         *self as f32
     }
 }
+
+pub struct RuntimeException(pub String);
+
+impl RuntimeException {
+    pub fn emit(&self) {
+        println!("[Pine] RUNTIME EXCEPTION: {}", self.0)
+    }
+
+    pub fn new(msg: &str) -> Self {
+        Self(msg.to_string())
+    }
+}
+
+pub trait IntoResult<T> {
+    fn into_result(&self, msg: &'static str) -> Result<(), RuntimeException>;
+    fn into_result_string(&self, msg: String) -> Result<(), RuntimeException>;
+}
+
+impl<T> IntoResult<T> for Option<T> {
+    fn into_result(&self, msg: &'static str) -> Result<(), RuntimeException> {
+        if self.is_some() {
+            Ok(())
+        } else {
+            Err(RuntimeException(msg.to_string()))
+        }
+    }
+
+    fn into_result_string(&self, msg: String) -> Result<(), RuntimeException> {
+        if self.is_some() {
+            Ok(())
+        } else {
+            Err(RuntimeException(msg))
+        }
+    }
+}

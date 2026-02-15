@@ -15,3 +15,4 @@ pub use crate::math::Math;
 pub use std::cell::{RefMut, Ref};
 pub use crate::math::Vec2D;
 pub use crate::Engine;
+pub use crate::util::RuntimeException;

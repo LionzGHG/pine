@@ -5,19 +5,22 @@
 //! To start with your application, follow this general application layout:
 //! ```
 //! fn main() {
-//!     let window = Window::new("My Window", __start__, __update__);
+//!     let window = Window::new_no_commands("My Window", __start__, __update__);
 //!     window.run();
 //! }
 //! 
-//! fn __start__(&mut commands: Commands) {
+//! fn __start__() -> Result<(), RuntimeException> {
 //!     println!("Program has started!");
 //! }
 //! 
-//! fn __update__(&mut commands: Commands) {
+//! fn __update__() -> Result<(), RuntimeException> {
 //!     println!("Program is running!");
 //! }
 //! ```
-//! For further orientation, get yourself acquainted with the [Window](window::Window), [Component] and [Commands] structs, as well as
+//! ## Handling Events
+//! 
+//! ## Info
+//! For further orientation, get yourself acquainted with the [Window](window::Window), [Component] and [Engine] structs, as well as
 //! the [Actor](basic_components::Actor) [Component]. 
 //! ## Minimal Example
 //! Below is a minimal example of a game, where you can control a player.
@@ -27,13 +30,13 @@
 //! use pine::prelude::*;
 //! 
 //! fn main() {
-//!     let mut window = Window::new("My Window", start, update);
-//!     window.on_key_down(on_key_down);
+//!     let mut window = Window::new_no_commands("My Window", start, update);
+//!     window.on_key_down_no_commands(on_key_down);
 //!     window.run();
 //! }
 //! 
-//! pub fn on_key_down(commands: &mut Commands, keycode: i32) {
-//!     let mut player = find!(commands, Actor, "Player");
+//! pub fn on_key_down(keycode: i32) -> Result<(), RuntimeException> {
+//!     let mut player = Engine::find::<Actor>("Player");
 //! 
 //!     if keycode == KeyCode::UP {    
 //!         player.transform.y -= 10;
@@ -49,13 +52,12 @@
 //!     }
 //! }
 //! 
-//! pub fn start(commands: &mut Commands) {
+//! pub fn start() -> Result<(), RuntimeException> {
 //!     let player = make!(Actor::new("Player", "player"));
-//!     commands.spawn(cpy!(player));
-//! 
+//!     Engine::spawn(player)?;
 //! } 
 //! 
-//! pub fn update(commands: &mut Commands) {}
+//! pub fn update() -> Result<(), RuntimeException> {}
 //! ``` 
 
 pub type ComponentPointer = Rc<RefCell<dyn Component>>;
@@ -70,22 +72,202 @@ pub mod math;
 
 use std::cell::{RefCell, RefMut};
 use std::ffi::CString;
+use std::fmt::Display;
 use std::rc::Rc;
 
 thread_local! {
     static ACTIVE_COMMANDS: RefCell<Option<*mut Commands>> = const { RefCell::new(None) };
 }
 
+/// ## Discription
+/// The [Engine] struct provides the necessary tools for controlling your application. 
+/// 
+/// In previous versions of ***Pine***, the [Commands] struct was used to control your application. Now, the Engine **wrapper**
+/// Provides an **easier to use** alternative.
+/// 
+/// When creating your application, use `Window::new_no_commands` instead of `Window::new` to create a new application.
+/// Your [start](crate::window::Window::start_no_commands) and [update](crate::window::Window::update_no_commands) will now
+/// ***not*** excpect `&mut Commands` as an argument anymore.
+/// 
+/// To use the functionalities of [Commands], just use [Engine] instead.
+/// 
+/// ## Technical Info
+/// [Engine] creates small scopes within your actual code where [Commands] is borrowed locally:
+/// ```
+/// Engine::with_commands(|cmds| {
+///     // use commands here...
+/// }).unwrap(); // commands dropped here again...
+/// ``` 
+/// For **static borrows**, use `Engine::with_commands_static` instead.
+/// ## Utility Methods
+/// However, [Engine] also provides the same functionalities as [Commands], for example, the [spawn](Engine::spawn) method:
+/// ```
+/// Engine::spawn(my_component)?;
+/// ``` 
+/// ## Example
+/// ```
+/// fn main() {
+///     let window = Window::new_no_commands("My Window", start, update);
+///     window.on_mouse_button_down_no_commands(on_mouse);
+///     window.run(); // starts the program
+/// }
+/// 
+/// fn on_mouse(_keycode: i32, _p: Point) {
+///     let mut score = Engine::get_global_var::<u32>("score")?;
+///     *score += 1;
+/// }
+/// 
+/// fn start() -> Result<(), RuntimeException> {
+///     let actor = make!(Actor::new("Player"));
+///     Engine::spawn(actor)?;
+/// 
+///     let score = 0u32;
+///     Engine::add_global_var("score", &score)?;
+/// }
+/// 
+/// fn update() -> Result<(), RuntimeException> {
+///     // ...    
+/// }
+/// ```
 pub struct Engine;
 
 impl Engine {
+    pub fn get_world_size() -> (f32, f32) {
+        Engine::with_commands(|cmds| cmds.world_size).unwrap()
+    }
+
+    /// ## Description
+    /// The [find](Engine::find) method of the [Engine] struct allows you to search for currently active
+    /// [Components](Component) and return them if found. You search for Components by giving them a unique id 
+    /// on initialization for which you then search using this function. 
+    /// 
+    /// If a component with a matching id is found
+    /// within the active components list (that is, if you've called `Engine::spawn(cpy!(/* Component */))?` (see: [spawn](Engine::spawn))
+    /// on the component with the searched-for id), it will be returned. Otherwise, [find](Commands::find)
+    /// will throw a [RuntimeException].
+    /// ## Example
+    /// ```
+    /// fn __start__() -> Result<(), RuntimeException> {
+    ///     let label = make!(Label::new("Label1", "Hello, World!", 100, 100));
+    ///     Engine::spawn(label)?;
+    /// }
+    /// 
+    /// fn __update__(&mut commands: Commands) {
+    ///     let label = Engine::find("Label1");
+    ///     assert_eq!(borrow!(label).text == "Hello, World!".to_string());
+    /// }
+    /// ```
+    pub fn find<T: Component + 'static>(id: &str) -> RefMut<'_, T> {
+        Engine::with_commands_static(|cmds| {
+            cmds.find::<T>(id)
+        }).unwrap().expect("[PINE] ACTOR NOT FOUND: actor was not found.")
+    }
+
+    /// ## Description
+    /// Removes an active component from the list of active components, effectively destroying it and removing it
+    /// from the game scene.
+    /// ## Example
+    /// ```
+    /// fn on_start() -> Result<(), RuntimeException> {
+    ///     let actor = make!(Actor::new("My Actor", ""));
+    ///     Engine::spawn(actor.clone())?;
+    ///     
+    ///     if actor.get_texture().is_none() {
+    ///         Engine::destroy(actor)?;
+    ///     }
+    /// }
+    /// ```
+    pub fn destroy(&mut self, id: &'static str) -> Result<(), RuntimeException> {
+        Engine::with_commands(|cmds| {
+            cmds.destroy(id);
+        }).into_result_string(format!("Failed to destroy component '{}'", id))
+    }
+
+    /// ## Description
+    /// Creates an active instance of a Component within your application by adding it to the list of active components.
+    /// The [Commands] struct keeps track of all components currently active and 
+    /// 1. tries to initialize them on [spawn](Engine::spawn) by adding it to the [Handle]
+    /// 2. tries to render them (if renderable) every tick by using the [Renderer]
+    /// The [spawn](Engine::spawn) method is used for the first step but leads consequently to the second, because
+    /// on initialization, the component is added to the lsit of active components. The [update](Commands::update) method
+    /// is automatically called each tick and calls each Components [render](Component::render) method for all the components
+    /// within the active components.
+    /// ```
+    /// Engine::spawn(my_component)?;
+    /// ``` 
+    /// If you want your component to be renderable, you'll have to include that into the [render](Component::render) method of your component.
+    /// Everything apart from rendering, that is, everything that does not need to be regenerated each tick goes into the
+    /// [init](Component::init) method instead. 
+
+    pub fn spawn(component: Rc<RefCell<dyn Component + 'static>>) ->  Result<(), RuntimeException> {
+        Engine::with_commands(|cmds| {
+            cmds.spawn(component.clone());
+        }).into_result_string(format!("Failed to spawn component '{}'", component.borrow().component_id()))
+    }
+
+    /// ## Description
+    /// Using [add_global_var](Engine::add_global_var) you can globalize local variables.
+    /// Using this method (`get_global_var`) you can retrieve them back into scope.
+    /// 
+    /// Re-localized global vars are passed as `RefMut<'_, T>`, which means that they remain mutable
+    /// throughout scopes. Changing the globalized variable in any scope means that it's contents will be
+    /// mutated throughout scopes.
+    /// ## Example
+    /// ```
+    /// fn start() -> Result<(), RuntimeException> {
+    ///     let local_var = 0i32;
+    ///     Engine::add_global_var("global_var", &local_var)?;
+    /// }
+    /// 
+    /// fn on_mouse_button_down() -> Result<(), RuntimeException> {
+    ///     let localized_var = Engine::get_global_var::<i32>("global_var");
+    ///     *localized_var += 1;
+    /// }
+    /// ```
+    pub fn get_global_var<T: Clone + 'static>(id: &str) -> RefMut<'_, T> {
+        Engine::with_commands_static(|cmds| {
+            cmds.get_global_var::<T>(id)
+        }).unwrap().expect("[PINE] GLOBAL VARIABLE IS NULL: global variable does not exist.")
+    }
+
+    /// ## Description
+    /// Using [add_global_var](Engine::add_global_var) you can globalize local variables.
+    /// Use [get_global_var](Engine::get_global_var) to download them into your current scope.
+    ///  
+    /// Re-localized global vars are passed as `RefMut<'_, T>`, which means that they remain mutable
+    /// throughout scopes. Changing the globalized variable in any scope means that it's contents will be
+    /// mutated throughout scopes.
+    /// ## Example
+    /// ```
+    /// fn start() -> Result<(), RuntimeException> {
+    ///     let local_var = 0i32;
+    ///     Engine::add_global_var("global_var", &local_var)?;
+    /// }
+    /// 
+    /// fn on_mouse_button_down() -> Result<(), RuntimeException> {
+    ///     let localized_var = Engine::get_global_var::<i32>("global_var");
+    ///     *localized_var += 1;
+    /// }
+    /// ```
+    pub fn add_global_var<T: Clone + 'static>(id: &str, var: &T) -> Result<(), RuntimeException> {
+        Engine::with_commands_static(|cmds| {
+            cmds.add_global_var(id, var);
+        }).into_result_string(format!("Failed to add global variable '{}'", id))
+    }
+
     pub(crate) fn set_active_commands(commands: Option<*mut Commands>) {
         ACTIVE_COMMANDS.with(|slot| {
             *slot.borrow_mut() = commands;
         });
     }
 
-    pub fn get_active_commands() -> &'static mut Commands {
+    /// ## Description
+    /// Returns an instance of the currently active [Commands] instance as `&'static mut Commands` within an `no_commands` environment.
+    /// ## Unsafe
+    /// [Engine] has wrappers for almost all [Commands] functions. If you can, use them instead. Otherwise, check if you can use  
+    /// [with_commands](Engine::with_commands) or [with_commands_static](Engine::with_commands_static). **Only** use this
+    /// method if there is absolutely no other alternative. 
+    pub unsafe fn get_active_commands() -> &'static mut Commands {
         ACTIVE_COMMANDS.with(|slot| {
             let ptr = (*slot.borrow()).unwrap();
             unsafe {
@@ -94,15 +276,24 @@ impl Engine {
         })
     }
 
+    /// ## Description
+    /// Creates a local scope, where [Commands] is borrowed (as `&'static mut Commands`).
+    /// 
+    /// [Engine] has wrappers for almost all [Commands] functions. If you can, use them instead.
     pub fn with_commands_static<R>(f: impl FnOnce(&'static mut Commands) -> R) -> Option<R> {
-        let commands = Engine::get_active_commands();
+        let commands = unsafe { Engine::get_active_commands() };
         Some(f(commands))
     }
 
+    /// ## Description
+    /// Creates a local scope, where [Commands] is borrowed (as `&'static mut Commands`).
+    /// 
+    /// [Engine] has wrappers for almost all [Commands] functions. If you can, use them instead.
+    /// ## Technical Info 
     /// Runs a closure with the currently active [`Commands`] context.
     ///
     /// This is useful in callbacks that intentionally avoid `&mut Commands`
-    /// in their function signature, e.g. when using [`Window::new_no_commands`]
+    /// in their function signature, e.g. when using [`Window::new_no_commands`](crate::window::Window::new_no_commands)
     /// or `on_*_no_commands` hooks.
     ///
     /// Returns `None` when called outside of [`Window::run`](window::Window::run).
@@ -303,13 +494,14 @@ macro_rules! upload {
     };
 }
 
-use std::{mem::MaybeUninit};
+use std::mem::MaybeUninit;
 
 use sdl2::{sys::{SDL_CreateRenderer, SDL_CreateWindow, SDL_Event, SDL_INIT_VIDEO, SDL_Init, SDL_PollEvent, SDL_Renderer, SDL_Window}};
 use sdl2::sys::{SDL_CreateTextureFromSurface, SDL_DestroyRenderer, SDL_DestroyWindow, SDL_EventType, SDL_FreeSurface, SDL_LoadBMP_RW, SDL_Quit, SDL_RWFromFile, SDL_RWops, SDL_Surface, SDL_Texture, image};
 
 use crate::prelude::Texture2D;
-use crate::util::{AnySafecast, ComponentReferenceSafecast, cstr_rb};
+use crate::util::RuntimeException;
+use crate::util::{AnySafecast, ComponentReferenceSafecast, IntoResult, cstr_rb};
 
 
 /// ## Description
@@ -523,6 +715,7 @@ pub struct Commands {
     pub renderer: Renderer,
     pub active_components: Vec<ComponentPointer>,
     pub window_bounds: (i32, i32),
+    pub world_size: (f32, f32),
     pub global_variables: Vec<(String, Rc<RefCell<dyn std::any::Any>>)>,
 }
 
