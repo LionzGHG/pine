@@ -1,15 +1,58 @@
+use std::ops::{Add, Mul, Sub};
+
 use crate::util::Floatify;
 
-
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
-pub struct Vec2D {
+pub struct Vec2 {
     pub x: f32,
     pub y: f32,
 }
 
-impl Vec2D {
-    pub fn new(x: impl Floatify, y: impl Floatify) -> Vec2D {
-        Vec2D { x: x.floatify(), y: y.floatify() }
+impl Mul<f32> for Vec2 {
+    type Output = Self;
+    fn mul(self, rhs: f32) -> Self::Output {
+        Vec2 {
+            x: self.x * rhs,
+            y: self.y * rhs
+        }
+    }
+}
+
+impl Sub<Self> for Vec2 {
+    type Output = Self;
+    fn sub(self, rhs: Self) -> Self::Output {
+        Vec2 {
+            x: self.x - rhs.x,
+            y: self.y - rhs.y
+        }
+    }
+}
+
+impl Add<Self> for Vec2 {
+    type Output = Self;
+    fn add(self, rhs: Self) -> Self::Output {
+        Vec2 {
+            x: self.x + rhs.x,
+            y: self.y + rhs.y
+        }
+    }
+}
+
+impl Vec2 {
+
+    pub const ZERO: Vec2 = Vec2::new_f32(0., 0.);
+
+    #[inline(always)]
+    pub const fn new_f32(x: f32, y: f32) -> Self {
+        Vec2 { x, y }
+    }
+    
+    pub fn new(x: impl Floatify, y: impl Floatify) -> Vec2 {
+        Vec2 { x: x.floatify(), y: y.floatify() }
+    }
+
+    pub fn as_point(&self) -> Point {
+        Point(self.x as i32, self.y as i32)
     }
 }
 
@@ -39,6 +82,10 @@ impl Point {
         self.x() >= min_x && self.x() <= max_x &&
         self.y() >= min_y && self.y() <= max_y
     }
+
+    pub fn as_vec2(&self) -> Vec2 {
+        Vec2::new(self.x() as f32, self.y() as f32)
+    } 
 }
 
 pub struct Math;
@@ -232,5 +279,38 @@ impl Math {
     /// ```
     pub fn approx_eq(a: f32, b: f32, epsilon: f32) -> bool {
         (a - b).abs() <= epsilon
+    }
+
+    /// ## Description
+    /// Rotates a 2D vector around the origin by a given angle in degrees.
+    ///
+    /// The rotation is counterclockwise and uses the standard 2D rotation matrix:
+    ///
+    /// x' = x * cos(θ) - y * sin(θ)
+    /// y' = x * sin(θ) + y * cos(θ)
+    ///
+    /// - vec: vector to rotate
+    /// - degrees: rotation angle in degrees
+    ///
+    /// ## Example
+    /// ```
+    /// let v = Vec2::new(1.0, 0.0);
+    /// let rotated = Math::rotate_vector(v, 90.0);
+    /// assert!(Math::approx_eq(rotated.x, 0.0, 1e-6));
+    /// assert!(Math::approx_eq(rotated.y, 1.0, 1e-6));
+    /// ```
+    pub fn rotate_vector(vec: Vec2, degrees: f32) -> Vec2 {
+        let rad = Math::deg_to_rad(degrees);
+        let cos = rad.cos();
+        let sin = rad.sin();
+
+        Vec2 {
+            x: vec.x * cos - vec.y * sin,
+            y: vec.x * sin + vec.y * cos,
+        }
+    }
+
+    pub fn rotate(current_rotation: f32, delta_degrees: f32) -> f32 {
+        (current_rotation + delta_degrees).rem_euclid(360.0)
     }
 }

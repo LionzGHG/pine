@@ -1,12 +1,20 @@
 use std::ffi::CString;
 use std::mem::MaybeUninit;
+use std::time::Instant;
 
 use crate::math::Point;
-use crate::util::RuntimeException;
+use crate::util::{RuntimeException, Time};
 use crate::{Commands, Handle, Renderer, Engine};
 
-use sdl2::sys::{SDL_CreateRenderer, SDL_CreateWindow, SDL_Event, SDL_INIT_VIDEO, SDL_Init, SDL_PollEvent, SDL_RenderClear, SDL_RenderPresent, SDL_RenderSetLogicalSize, SDL_SetHint, SDL_SetRenderDrawColor, SDL_Window};
+use sdl2::sys::{SDL_CreateRenderer, SDL_CreateWindow, SDL_Event, SDL_GetHint, SDL_HINT_RENDER_VSYNC, SDL_INIT_VIDEO, SDL_Init, SDL_PollEvent, SDL_RenderClear, SDL_RenderPresent, SDL_RenderSetLogicalSize, SDL_SetHint, SDL_SetRenderDrawColor, SDL_Window};
 use sdl2::sys::{SDL_DestroyRenderer, SDL_DestroyWindow, SDL_EventType, SDL_Quit};
+
+const DEFAULT_TARGET_FPS: f32 = 60.0;
+const DEFAULT_TARGET_FRAME_TIME: f32 = 1.0 / DEFAULT_TARGET_FPS;
+
+pub(in crate) fn compute_target_frame_time_from_target_fps(target_fps: f32) -> f32 {
+    1.0 / target_fps 
+}
 
 /// ## Description
 /// The [Window] struct is the starting point of your application. You can create a basic window by using the
@@ -53,6 +61,9 @@ pub struct Window {
     pub(in crate) renderer: Renderer,
     pub running: bool,
 
+    pub target_fps: f32,
+    pub target_frame_time: f32,
+
     // Event Handling
     pub start: Option<Box<dyn Fn(&mut Commands) -> Result<(), RuntimeException>>>,
     pub update: Option<Box<dyn Fn(&mut Commands) -> Result<(), RuntimeException>>>,
@@ -73,7 +84,14 @@ impl Window {
         unsafe {
             SDL_Init(SDL_INIT_VIDEO);
 
-            let raw_handle: *mut SDL_Window = SDL_CreateWindow(title.as_ptr() as *const i8, 400, 400, 800, 600, 0);
+            let name = CString::new("SDL_RENDER_VSYNC").unwrap();
+            let hint = CString::new("1").unwrap();
+            SDL_SetHint(name.as_ptr(), hint.as_ptr());
+            println!("VSync hint: {}", SDL_GetHint(name.as_ptr()).is_null());
+
+            let c_title = CString::new(title).unwrap();
+
+            let raw_handle: *mut SDL_Window = SDL_CreateWindow(c_title.as_ptr(), 400, 400, 800, 600, 0);
 
             Window {
                 title: title.to_string().clone(),
@@ -86,6 +104,8 @@ impl Window {
                 handle: Handle(raw_handle),
                 renderer: Renderer::new(SDL_CreateRenderer(raw_handle, -1, 0), 800, 600),
                 running: false,
+                target_fps: DEFAULT_TARGET_FPS,
+                target_frame_time: DEFAULT_TARGET_FRAME_TIME,
                 start: Some(Box::new(on_start)),
                 update: Some(Box::new(on_tick)),
                 start_no_commands: None,
@@ -104,8 +124,15 @@ impl Window {
         unsafe {
             SDL_Init(SDL_INIT_VIDEO);
 
+            let name = CString::new("SDL_RENDER_VSYNC").unwrap();
+            let hint = CString::new("1").unwrap();
+            SDL_SetHint(name.as_ptr(), hint.as_ptr());
+            println!("VSync hint: {}", SDL_GetHint(name.as_ptr()).is_null());
+
+            let c_title = CString::new(title).unwrap();
+
             let raw_handle: *mut SDL_Window =
-                SDL_CreateWindow(title.as_ptr() as *const i8, 400, 400, 800, 600, 0);
+                SDL_CreateWindow(c_title.as_ptr(), 400, 400, 800, 600, 0);
 
             Window {
                 title: title.to_string().clone(),
@@ -118,6 +145,8 @@ impl Window {
                 handle: Handle(raw_handle),
                 renderer: Renderer::new(SDL_CreateRenderer(raw_handle, -1, 0), 800, 600),
                 running: false,
+                target_fps: DEFAULT_TARGET_FPS,
+                target_frame_time: DEFAULT_TARGET_FRAME_TIME,
                 start: None,
                 update: None,
                 start_no_commands: Some(Box::new(on_start)),
@@ -130,6 +159,11 @@ impl Window {
                 on_mouse_motion_no_commands: None,
             }
         }
+    }
+
+    pub unsafe fn set_target_fps(&mut self, target_fps: f32) {
+        self.target_fps = target_fps;
+        self.target_frame_time = compute_target_frame_time_from_target_fps(target_fps);
     }
 
     pub fn set_logical_size(&mut self, width: usize, height: usize) {
@@ -243,6 +277,7 @@ impl Window {
 
     pub fn run(&mut self) {
         self.running = true;
+        self.set_logical_size(self.logical_width, self.logical_height);
 
         let mut cmds = Commands {
             handle: self.handle.clone(),
@@ -252,6 +287,8 @@ impl Window {
             world_size: (self.renderer.logical_width, self.renderer.logical_height),
             global_variables: Vec::new(),
         };
+
+        println!("world_scale={}", self.renderer.world_scale);
 
         Engine::set_active_commands(Some(&mut cmds as *mut Commands));
 
@@ -289,7 +326,11 @@ impl Window {
         // event handling
         let mut event = MaybeUninit::<SDL_Event>::uninit();
 
+        Time::init();
         while self.running {
+            let frame_start = Instant::now();
+
+            // Events
             unsafe {
                 while SDL_PollEvent(event.as_mut_ptr()) == 1 {
                     let event = event.assume_init();
@@ -351,6 +392,8 @@ impl Window {
                     }
                 }
 
+                // Time::update();
+
                 SDL_SetRenderDrawColor(self.renderer.get(), 255, 255, 255, 255);
                 SDL_RenderClear(self.renderer.get());
 
@@ -360,6 +403,7 @@ impl Window {
                     cmds.update(active_component.clone());
                 }
             
+                // Call update method
                 if let Some(update) = &self.update {
                     let err = update(&mut cmds);
                     if let Err(re) = err {
@@ -383,6 +427,16 @@ impl Window {
 
                 SDL_RenderPresent(self.renderer.get());
             }
+
+            let frame_elapsed = frame_start.elapsed().as_secs_f32();
+
+            if frame_elapsed < self.target_frame_time {
+                std::thread::sleep(
+                    std::time::Duration::from_secs_f32(self.target_frame_time - frame_elapsed)
+                );
+            }
+
+            Time::update();
         }
 
         Engine::set_active_commands(None);

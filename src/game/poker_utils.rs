@@ -16,7 +16,7 @@ impl Player {
         );
 
         get!(card1.0).transform.set_position(
-            Vec2D::new(commands.half_width() / 4, commands.half_height() / 2)
+            Vec2::new(commands.half_width() / 4, commands.half_height() / 2)
         );
         get!(card1.0).transform.scale = 0.2;
 
@@ -28,7 +28,7 @@ impl Player {
         );
 
         get!(card2.0).transform.set_position(
-            Vec2D::new(commands.half_width() / 2, commands.half_height() / 2)
+            Vec2::new(commands.half_width() / 2, commands.half_height() / 2)
         );
         get!(card2.0).transform.scale = 0.2;
 

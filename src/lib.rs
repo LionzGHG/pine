@@ -18,7 +18,44 @@
 //! }
 //! ```
 //! ## Handling Events
+//! **event handling** in Pine is achieved through callbacks. Use `window.*_no_commands()` to add callback functions to your Window.
 //! 
+//! Some useful callbacks are:
+//! - `on_key_down` and `on_key_down_no_commands`
+//! - `on_mouse_button_down` and `on_mouse_button_down_no_commands`
+//! - `on_mouse_motion` and `on_mouse_motion_no_commands`
+//! ### Usage Exaple (without commands, **recommended!**)
+//! ```
+//! fn main() {
+//!     let mut window = Window::new_no_commands("my window", start, update);
+//!     window.on_key_down_no_commands(key_down);
+//!     window.run();
+//! }
+//! 
+//! fn key_down(keycode: i32) -> Result<(), RuntimeException> {
+//!     if keycode == Keycode::Space {
+//!         println!("Space Key pressed!");    
+//!     }
+//! 
+//!     Ok(())
+//! }
+//! ```
+//! ### Usage Example (with commands)
+//! ```
+//! fn main() {
+//!     let mut window = Window::new("my window", start, update);
+//!     window.on_key_down(key_down);
+//!     window.run();
+//! }
+//! 
+//! fn key_down(commands: &mut Commands, keycode: i32) -> Result<(), RuntimeException> {
+//!     if keycode == Keycode::Space {
+//!         println!("Space key pressed!")
+//!     }
+//! 
+//!     Ok(())
+//! }
+//! ```
 //! ## Info
 //! For further orientation, get yourself acquainted with the [Window](window::Window), [Component] and [Engine] structs, as well as
 //! the [Actor](basic_components::Actor) [Component]. 
@@ -69,6 +106,7 @@ pub mod util;
 pub mod assets;
 pub mod basic_attributes;
 pub mod math;
+pub mod physics;
 
 use std::cell::{RefCell, RefMut};
 use std::ffi::CString;
@@ -136,6 +174,30 @@ impl Engine {
         Engine::with_commands(|cmds| cmds.world_size).unwrap()
     }
 
+    pub fn get_height() -> f32 {
+        Engine::get_world_size().1
+    }
+
+    pub fn get_width() -> f32 {
+        Engine::get_world_size().0
+    }
+
+    pub fn get_world_center() -> crate::math::Vec2 {
+        Engine::with_commands(|cmds| {
+            let hw = cmds.world_size.0 / 2.;
+            let hh = cmds.world_size.1 / 2.;
+            crate::math::Vec2::new(hw, hh)
+        }).unwrap()
+    }
+
+    pub fn capture<F>(actor: Rc<RefCell<crate::prelude::Actor>>, f: F)
+    where
+        F: FnOnce(&mut crate::prelude::Actor),
+    {
+        let mut borrowed = actor.borrow_mut();
+        f(&mut borrowed);
+    }
+
     /// ## Description
     /// The [find](Engine::find) method of the [Engine] struct allows you to search for currently active
     /// [Components](Component) and return them if found. You search for Components by giving them a unique id 
@@ -163,6 +225,17 @@ impl Engine {
         }).unwrap().expect("[PINE] ACTOR NOT FOUND: actor was not found.")
     }
 
+    pub fn find_as_ptr<T: Component + 'static>(id: &str) -> Option<Rc<RefCell<T>>> {
+        Engine::with_commands_static(|cmds| {
+            cmds.find_as_ptr::<T>(id)
+        }).unwrap()
+    }
+
+    pub fn get_actor(id: &str) -> Result<Rc<RefCell<Actor>>, RuntimeException> {
+        let actor = Engine::find_as_ptr::<Actor>(id);
+        actor.into_result_value(format!("Actor '{id}' not found"))
+    }
+
     /// ## Description
     /// Removes an active component from the list of active components, effectively destroying it and removing it
     /// from the game scene.
@@ -177,10 +250,16 @@ impl Engine {
     ///     }
     /// }
     /// ```
-    pub fn destroy(&mut self, id: &'static str) -> Result<(), RuntimeException> {
+    pub fn destroy(id: &'static str) -> Result<(), RuntimeException> {
         Engine::with_commands(|cmds| {
             cmds.destroy(id);
         }).into_result_string(format!("Failed to destroy component '{}'", id))
+    }
+
+    pub fn delete_global_var(id: &'static str) {
+        Engine::with_commands(|cmds| {
+            cmds.delete_global_var(id);
+        });
     }
 
     /// ## Description
@@ -444,29 +523,45 @@ macro_rules! get {
 /// ```
 /// let var = commands.get_global_var::<i32>("counter").unwrap();
 /// ``` 
+/// Or using the [Engine] wrapper:
+/// ```
+/// let var = Engine::get_global_var::<i32>("counter");
+/// ```
 /// Or using the `load!` macro:
 /// ```
-/// let var = load!(commands, i32, "counter");
+/// let var = load!(i32, "counter");
+/// ```
+/// The `load!` macro expands to the [Engine] definition:
+/// ```
+/// macro_rules! load {
+///     ($typeid:ty, $id:expr) => {
+///         Engine::get_global_var::<$typeid>($id)
+///     }
+/// }
 /// ```
 /// To upload a variable (**make a global variable**), use the [upload] macro.
 /// ## Example
 /// ```
-/// fn start(commands: &mut Commands) {
+/// fn start() -> Result<(), RuntimeError> {
 ///     let counter = 0u32;
-///     upload!(commands, &counter);
+///     upload!(&counter);
+///     
+///     Ok(())
 /// }
 /// 
-/// fn update(commands: &mut Commands) {
-///     let counter = load!(commands, u32, "counter");
+/// fn update() -> Result<(), RuntimeError> {
+///     let counter = load!(u32, "counter");
 ///     if counter < 10 {
 ///         *counter += 1;
 ///     }
+/// 
+///     Ok(())
 /// }
 /// ```
 #[macro_export]
 macro_rules! load {
-    ($cmds:expr, $typeid:ty, $id:expr) => {
-        $cmds.get_global_var::<$typeid>($id).unwrap()
+    ($typeid:ty, $id:expr) => {
+        Engine::get_global_var::<$typeid>($id)
     };
 }
 
@@ -475,22 +570,26 @@ macro_rules! load {
 /// A **global variable** is a variable, that you can retrieve from another foreign scope using the [load] macro.
 /// ## Example
 /// ```
-/// fn start(commands: &mut Commands) {
+/// fn start() -> Result<(), RuntimeError> {
 ///     let counter = 0u32;
-///     upload!(commands, &counter);
+///     upload!("counter", &counter);
+/// 
+///     Ok(())
 /// }
 /// 
-/// fn update(commands: &mut Commands) {
-///     let counter = load!(commands, u32, "counter");
+/// fn update() -> Result<(), RuntimeError> {
+///     let counter = load!(u32, "counter");
 ///     if counter < 10 {
 ///         *counter += 1;
 ///     }
+/// 
+///     Ok(())
 /// }
 /// ```
 #[macro_export]
 macro_rules! upload {
-    ($cmds:expr, $var:expr) => {
-        $cmds.add_global_var(stringify!($var), $var);
+    ($id:expr, $var:expr) => {
+        Engine::add_global_var($id, $var)
     };
 }
 
@@ -499,8 +598,8 @@ use std::mem::MaybeUninit;
 use sdl2::{sys::{SDL_CreateRenderer, SDL_CreateWindow, SDL_Event, SDL_INIT_VIDEO, SDL_Init, SDL_PollEvent, SDL_Renderer, SDL_Window}};
 use sdl2::sys::{SDL_CreateTextureFromSurface, SDL_DestroyRenderer, SDL_DestroyWindow, SDL_EventType, SDL_FreeSurface, SDL_LoadBMP_RW, SDL_Quit, SDL_RWFromFile, SDL_RWops, SDL_Surface, SDL_Texture, image};
 
-use crate::prelude::Texture2D;
-use crate::util::RuntimeException;
+use crate::prelude::{Actor, Texture2D};
+use crate::util::{ComponentSafecastRc, RuntimeException};
 use crate::util::{AnySafecast, ComponentReferenceSafecast, IntoResult, cstr_rb};
 
 
@@ -509,6 +608,8 @@ use crate::util::{AnySafecast, ComponentReferenceSafecast, IntoResult, cstr_rb};
 pub trait Attribute {
     fn as_any(&self) -> &dyn std::any::Any;
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any;
+    fn start(&mut self) {}
+    fn update(&mut self) {}
 }
 
 /// ## Description
@@ -668,6 +769,9 @@ pub trait Component: std::any::Any {
     /// 
     /// **Caution!**: When your component has no proper component id, you won't be able to find it using [Commands::find]!
     fn component_id(&self) -> String;
+    fn component_type(&self) -> String {
+        String::from("Basic Component")
+    }
     
     /// ## Description
     /// If you want your component to be renderable, you'll have to include that into the [render](Component::render) method of your component.
@@ -678,6 +782,7 @@ pub trait Component: std::any::Any {
     fn clone_box(&self) -> Box<dyn Component>;
     fn as_any(&self) -> &dyn std::any::Any;
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any;
+    fn get_attributes(&self) -> Vec<(String, Rc<RefCell<dyn Attribute>>)>;
 }
 
 /// ## Discription
@@ -735,6 +840,15 @@ impl Commands {
     /// [init](Component::init) method instead. 
     pub fn spawn(&mut self, component: ComponentPointer) {
         component.borrow().init(&mut self.handle);
+
+        // initialize all attributes
+        let attributes = component.borrow().get_attributes();
+        if attributes.len() > 0 {
+            for attr in attributes {
+                attr.1.borrow_mut().start();
+            }
+        }
+
         self.active_components.push(component);
     }
 
@@ -762,12 +876,28 @@ impl Commands {
         }
     }
 
+    pub fn delete_global_var(&mut self, id: &str) {
+        for (idx, var) in self.global_variables.clone().iter().enumerate() {
+            if var.0 == id.to_string() {
+                self.global_variables.remove(idx);
+            }
+        }
+    }
+
     /// ## Description
     /// The [update](Commands::update) method
     /// is automatically called each tick and calls each Components [render](Component::render) method for all the components
     /// within the active components. For more info, [click here](Commands::spawn).
     pub fn update(&mut self, component: ComponentPointer) {
         component.borrow_mut().render(&mut self.renderer);
+
+        // update all attributes
+        let attrs = component.borrow().get_attributes();
+        if attrs.len() > 0 {
+            for attr in attrs {
+                attr.1.borrow_mut().update();
+            }
+        }
     }    
 
     /// ## Description
@@ -794,9 +924,19 @@ impl Commands {
     pub fn find<T: Component + 'static>(&mut self, id: &str) -> Option<RefMut<'_, T>> {
         let index = self.active_components
             .iter()
-            .position(|x| x.borrow().component_id() == id)?;
+            .position(|x| {
+                x.borrow().component_id() == id
+            })?;
 
         self.active_components[index].safecast_ref::<T>()
+    }
+
+    pub fn find_as_ptr<T: Component + 'static>(&self, id: &str) -> Option<Rc<RefCell<T>>> {
+        let component = self.active_components
+            .iter()
+            .find(|x| x.borrow().component_id() == id)?;
+
+        component.clone().safecast_rc::<T>()
     }
 
     pub fn add_global_var<T: std::any::Any + Clone + 'static>(&mut self, id: impl Into<String>, var: &T) {

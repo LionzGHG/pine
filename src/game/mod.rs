@@ -1,77 +1,76 @@
 
 use pine::prelude::*;
 
-use crate::game::poker_utils::{Card, Rank, Suit};
-
 pub mod poker_utils;
 
 pub fn begin() {
     let mut window = Window::new_no_commands("My Window", start, update);
-    window.on_mouse_button_down_no_commands(on_mouse);
+    window.set_logical_size(800, 600);
+    window.on_key_down_no_commands(on_key);
     window.run();
-}
+}     
 
-fn on_mouse(_key: i32, _p: Point) -> Result<(), RuntimeException> {
-    let mut deck = Engine::get_global_var::<Vec<Card>>("deck");
-    let mut active_card = Engine::get_global_var::<Option<Card>>("active_card");
-
-    if active_card.is_none() {
-        if let Some(card) = deck.pop() {
-            *active_card = Some(card.clone());
-        }
+fn on_key(keycode: i32) -> Result<(), RuntimeException> {
+    if keycode == KeyCode::SPACE {
+        Engine::capture(Engine::get_actor("Actor1")?, |actor| {
+            println!("height={}, y={}", Engine::get_height(), actor.transform.y);
+            actor.transform.y -= 200.0;
+            println!("height={}, y={}", Engine::get_height(), actor.transform.y);            
+        });
     }
 
     Ok(())
 }
 
+fn on_collision(other: &mut Actor) {
+    println!("Actor1 collided with Actor2.");
+}
+
 fn start() -> Result<(), RuntimeException> {
-    let mut deck = Vec::<Card>::new();
 
-    for &rank in &Rank::all() {
-        for &suit in &Suit::all() {
-            let card = Card::new(
-                &format!("{rank:?}_{suit:?}"),
-                "Card_Hidden",
-                rank,
-                suit
-            );
+    let actor1 = make!(Actor::new("Actor1", ""));
 
-            let (w, h) = Engine::get_world_size();
-            get!(card.0).transform.x = w / 2.;
-            get!(card.0).transform.y = h / 2.;
+    Engine::capture(actor1.clone(), |actor| {
+        actor.set_color(Color::GREEN);
+        actor.set_size(Vec2::new(100, 100));
 
-            get!(card.0).transform.scale = 0.1;
+        let world_center = Engine::get_world_center();
+        actor.set_position(world_center - Vec2::new(0, 200));
 
-            deck.push(card.clone());
-            Engine::spawn(card.0)?;
-        }
-    }
+        actor.add_attribute(
+            Collision2D::new("Actor1", actor.get_size(), on_collision),
+            "Actor1_Collider2D"
+        );
 
-    Engine::add_global_var("deck", &deck)?;
+        actor.add_attribute(
+            Physics2D::new("Actor1", Layer::GROUND),
+            "Actor1_Physics2D"
+        );
+    });
 
-    let active_card: Option<Card> = None;
-    Engine::add_global_var("active_card", &active_card)?;
+    Engine::spawn(actor1)?;
+
+    let actor2 = make!(Actor::new("Actor2", ""));
+
+    Engine::capture(actor2.clone(), |actor| {
+        actor.set_color(Color::BLUE);
+        actor.set_size(Vec2::new(100, 100));
+        actor.set_position(Engine::get_world_center());
+        actor.set_layer(Layer::GROUND);
+
+        actor.add_attribute(
+            Collision2D::new_no_callback("Actor2", actor.get_size()),
+            "Actor2_Collider2D"
+        );
+    });
+
+    Engine::spawn(actor2)?;
 
     Ok(())
 }
 
 fn update() -> Result<(), RuntimeException> {
-    let mut active_card = Engine::get_global_var::<Option<Card>>("active_card");
-
-    if let Some(card) = active_card.clone() {
-        let mut actor = get!(card.0);
-
-        let (w, h) = Engine::get_world_size();
-        let target_x = w / 2.;
-        let target_y = h / 2. + 100.;
-
-        actor.transform.x = Math::lerp(actor.transform.x, target_x, 0.01);
-        actor.transform.y = Math::lerp(actor.transform.y, target_y, 0.01);
-
-        if (actor.transform.x - target_x).abs() < 0.1 && (actor.transform.y - target_y).abs() < 0.1 {
-            *active_card = None;
-        }
-    }
 
     Ok(())
 }
+

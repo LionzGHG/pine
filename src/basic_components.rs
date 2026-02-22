@@ -1,8 +1,9 @@
-use std::{cell::{Ref, RefCell, RefMut}, ptr::null, rc::Rc};
+use std::{any::{type_name, type_name_of_val}, cell::{Ref, RefCell, RefMut}, ptr::null, rc::Rc};
 
-use sdl2::{pixels::Color, sys::{SDL_Rect, SDL_RenderCopy, SDL_RenderFillRect, SDL_SetRenderDrawColor, SDL_Texture}};
+use sdl2::{pixels::Color as Sdl2Color, sys::{SDL_BlendMode, SDL_Rect, SDL_RenderCopy, SDL_RenderCopyEx, SDL_RenderFillRect, SDL_RendererFlip, SDL_SetRenderDrawBlendMode, SDL_SetRenderDrawColor, SDL_Texture}};
+use crate::{prelude::Collision2D, util::{AttributeSafecastRc, Color, ComponentSafecastRc, Downcastable}};
 
-use crate::{Attribute, Component, assets::Assets, basic_attributes::{Material, Texture2D, Transform}, util::AttributeSafecast};
+use crate::{Attribute, Component, assets::Assets, basic_attributes::{Material, Texture2D, Transform}, math::Vec2, prelude::Layer, util::AttributeSafecast};
 
 /// ## Description
 /// **Item-Type**. [Basic Component](crate::basic_components).
@@ -12,7 +13,9 @@ use crate::{Attribute, Component, assets::Assets, basic_attributes::{Material, T
 /// 
 /// An Actor contains a few important fields, such as:
 /// - `Transform`: The [Transform] [attribute](crate::basic_attributes) allows Actors to move inside of the game world
-/// - `Texture` the [Texture2D] [attribute](crate::basic_attributes) allows us to attach a texture to the actor
+/// - `Texture` the [Texture2D] [attribute](crate::basic_attributes) allows us to attach a texture to the actor. 
+/// Leave this field empty (as string: `""`) if you want an actor without a texture. Then, use the [`set_material`](Actor::set_material) method
+/// to specify a material instead (otherwise, `Actor` will use the **default material**)
 #[derive(Clone)]
 pub struct Actor {
     pub id: String,
@@ -20,6 +23,7 @@ pub struct Actor {
     pub texture: Option<Texture2D>,
     pub material: Material,
     pub attributes: Vec<(String, Rc<RefCell<dyn Attribute>>)>,
+    pub layer: Layer,
 }
 
 impl Actor {
@@ -32,8 +36,29 @@ impl Actor {
             transform: Transform::default(),
             texture: Assets::get::<Texture2D>(&texture_name.into()),
             material: Material::default(),
-            attributes: Vec::new()
+            attributes: Vec::new(),
+            layer: Layer::DEFAULT,
         }
+    }
+
+    pub fn set_size(&mut self, s: Vec2) {
+        self.transform.set_size(s);
+    }
+
+    pub fn set_position(&mut self, p: Vec2) {
+        self.transform.set_position(p);
+    }
+
+    pub fn get_size(&self) -> Vec2 {
+        Vec2::new(self.transform.width, self.transform.height)
+    }
+
+    pub fn set_layer(&mut self, layer: Layer) {
+        self.layer = layer;
+    }
+
+    pub fn get_layer(&self) -> Layer {
+        self.layer
     }
 
     pub fn get_texture(&self) -> Option<&Texture2D> {
@@ -98,6 +123,28 @@ impl Actor {
         self.attributes[index].1.safecast_ref::<T>()
     }
 
+    pub fn get_first_attribute<T: Attribute + 'static>(&self) -> Option<Ref<'_, T>> {
+        let pos = self.attributes
+            .iter()
+            .position(|x| {
+                x.1.can_be_downcast_to::<Collision2D>()
+            })?;
+        
+        self.attributes[pos].1.safecast_ref::<T>()
+    }
+
+    pub fn get_first_attribute_as_ptr<T: Attribute + 'static>(
+        &self
+    ) -> Option<Rc<RefCell<T>>> {
+        let component = self.attributes
+            .iter()
+            .find(|(_, attr)| {
+                attr.can_be_downcast_to::<T>()
+            })?;
+
+        component.1.safecast_rc::<T>()
+    }
+
     pub fn get_attribute_mut<T: Attribute + 'static>(&self, id: &str) -> Option<RefMut<'_, T>> {
         let index = self.attributes
             .iter()
@@ -119,6 +166,10 @@ impl Actor {
 impl Component for Actor {
     fn component_id(&self) -> String {
         self.id.clone()
+    }
+
+    fn get_attributes(&self) -> Vec<(String, Rc<RefCell<dyn Attribute + 'static>>)> {
+        self.attributes.clone()
     }
     
     fn init(&self, handle: &mut crate::Handle) {}
@@ -155,24 +206,38 @@ impl Component for Actor {
                 //     pixel_w
                 // );
 
-                SDL_RenderCopy(renderer.get(), tex, null(), &dstrect);
+                //SDL_RenderCopy(renderer.get(), tex, null(), &dstrect);
+                SDL_RenderCopyEx(
+                    renderer.get(),
+                    tex,
+                    std::ptr::null(),
+                    &dstrect,
+                    self.transform.rotation as f64,
+                    std::ptr::null(),
+                    SDL_RendererFlip::SDL_FLIP_NONE,
+                );
             }
         } else {
             unsafe {
-                let color = self.material.color;
-
+                let color: Sdl2Color = self.material.color.into();
+            
                 SDL_SetRenderDrawColor(renderer.get(), color.r, color.g, color.b, color.a);
-                
+                SDL_SetRenderDrawBlendMode(renderer.get(), SDL_BlendMode::SDL_BLENDMODE_BLEND);
+            
                 let scale = renderer.world_scale;
-
-                let world_w = self.transform.width as f32 * self.transform.scale;
-                let world_h = self.transform.height as f32 * self.transform.scale;
-
+            
+                // Use actor size instead of transform width/height
+                let world_w = self.get_size().x * self.transform.scale;
+                let world_h = self.get_size().y * self.transform.scale;
+            
                 let pixel_w = world_w * scale;
                 let pixel_h = world_h * scale;
-
+            
                 let pixel_x = self.transform.x * scale - pixel_w / 2.0;
                 let pixel_y = self.transform.y * scale - pixel_h / 2.0;
+            
+                // println!("pixel_w={}, pixel_h={}", pixel_w, pixel_h);
+                // println!("size={:?}, transform.scale={:?}", self.get_size(), self.transform.scale);
 
                 let rect = SDL_Rect {
                     x: pixel_x as i32,
@@ -180,7 +245,7 @@ impl Component for Actor {
                     w: pixel_w as i32,
                     h: pixel_h as i32,
                 };
-
+            
                 SDL_RenderFillRect(renderer.get(), &rect);
             }
         }
@@ -188,6 +253,10 @@ impl Component for Actor {
 
     fn clone_box(&self) -> Box<dyn Component> {
         Box::new((*self).clone())
+    }
+
+    fn component_type(&self) -> String {
+        String::from("Actor")
     }
 
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
@@ -230,6 +299,10 @@ impl Label {
 impl Component for Label {
     fn init(&self, handle: &mut crate::Handle) {
         // TODO!
+    }
+
+    fn get_attributes(&self) -> Vec<(String, Rc<RefCell<dyn Attribute>>)> {
+        Vec::new()
     }
 
     fn render(&mut self, renderer: &mut crate::Renderer) {

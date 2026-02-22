@@ -1,18 +1,26 @@
 
-use sdl2::{pixels::Color, sys::{SDL_QueryTexture, SDL_Texture}};
+use sdl2::{pixels::Color as Sdl2Color, sys::{SDL_QueryTexture, SDL_Texture}};
+use crate::util::Color;
 
 pub use crate::Attribute;
-use crate::{assets::{Asset, AssetExt}, math::{Point, Vec2D}, util::Floatify};
+use crate::{assets::{Asset, AssetExt}, math::{Point, Vec2}, util::Floatify};
 
 #[derive(Debug, Clone)]
 pub struct Material {
     pub color: Color,
 }
 
+impl Material {
+    #[inline(always)]
+    pub fn new(color: Color) -> Self {
+        Material { color }
+    }
+}
+
 impl Default for Material {
     fn default() -> Self {
         Material {
-            color: Color::RGB(255, 255, 255),
+            color: Color::BLACK
         }
     }
 }
@@ -42,6 +50,7 @@ pub struct Transform {
     pub width: i32,
     pub height: i32,
     pub scale: f32,
+    pub rotation: f32,
 }
 
 impl Default for Transform {
@@ -52,6 +61,7 @@ impl Default for Transform {
             width: 0,
             height: 0,
             scale: 1.,
+            rotation: 0.,
         }
     }
 }
@@ -61,9 +71,18 @@ impl Transform {
         Point(self.x as i32, self.y as i32)
     }
 
-    pub fn set_position(&mut self, v: Vec2D) {
+    pub fn set_position(&mut self, v: Vec2) {
         self.x = v.x;
         self.y = v.y;
+    }
+
+    pub fn set_size(&mut self, s: Vec2) {
+        self.width = s.x as i32;
+        self.height = s.y as i32;
+    }
+
+    pub fn get_position(&self) -> Vec2 {
+        Vec2::new(self.x, self.y)
     }
 }
 
