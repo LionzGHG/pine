@@ -18,6 +18,24 @@ use crate::{Attribute, Commands, Component, ComponentPointer, math::Point, uploa
 pub struct KeyCode;
 
 impl KeyCode {
+    
+    pub fn key_name_of(keycode: i32) -> &'static str {
+        match keycode {
+            8 => "BACK",
+            13 => "ENTER",
+            16 => "SHIFT",
+            27 => "ESCAPE",
+            32 => "SPACE",
+            1073741904 => "LEFT",
+            1073741906 => "UP",
+            1073741903 => "RIGHT",
+            1073741905 => "DOWN",
+            1 => "LMB",
+            3 => "RMB",
+            _ => "UNKOWN" 
+        }
+    }
+
     pub const BACK: i32 = 8;
     pub const ENTER: i32 = 13;
     pub const SHIFT: i32 = 16;
@@ -34,6 +52,23 @@ impl KeyCode {
     // TODO
 }
 
+/// ## Description
+/// Utility trait to convert tuple-based coordinate data into a [Point](crate::math::Point).
+/// 
+/// In the context of the engine, this is primarily used for ergonomic
+/// conversion of raw integer coordinate pairs (e.g. mouse input, grid
+/// positions, SDL values) into the engine’s internal **math::Point** type.
+/// 
+/// This avoids manual construction like `Point(x, y)` and allows writing
+/// `(x, y).to_point()` instead.
+/// 
+/// - **Item-Type**: Utility Conversion Trait
+/// 
+/// ## Example
+/// ```
+/// let mouse_pos = (mouse_x, mouse_y).to_point();
+/// actor.transform.position = mouse_pos;
+/// ```
 pub trait ToPoint {
     fn to_point(&self) -> Point;
 }
@@ -86,11 +121,50 @@ impl Globalize for u32 {
     }
 }
 
+/// ## Description
+/// Provides safe runtime downcasting utilities for [Attribute] trait objects
+/// wrapped inside `Rc<RefCell<dyn Attribute>>`.
+/// 
+/// This trait is essential for the engine’s dynamic attribute system,
+/// allowing attributes to be queried and accessed without unsafe code.
+/// 
+/// It enables:
+/// - Mutable downcasting via `safecast_ref_mut`
+/// - Immutable downcasting via `safecast_ref`
+///
+/// Used internally by systems and components when interacting with
+/// heterogeneous attribute collections.
+/// 
+/// - **Item-Type**: Attribute Runtime Cast Utility
+/// 
+/// ## Example
+/// ```
+/// if let Some(mut collider) = attr.safecast_ref_mut::<Collision2D>() {
+///     collider.size.x += 10.0;
+/// }
+/// ```
 pub trait AttributeSafecast {
     fn safecast_ref_mut<T: 'static + Attribute>(&self) -> Option<RefMut<'_, T>>;
     fn safecast_ref<T: 'static + Attribute>(&self) -> Option<Ref<'_, T>>;
 }
 
+/// ## Description
+/// Runtime type inspection helper for [Attribute] trait objects.
+/// 
+/// Allows checking whether a dynamic attribute can be downcast to a
+/// specific concrete attribute type without performing the cast itself.
+/// 
+/// This is primarily used internally by engine casting utilities and
+/// avoids unnecessary borrow mapping if the type does not match.
+/// 
+/// - **Item-Type**: Attribute Type Introspection Utility
+/// 
+/// ## Example
+/// ```
+/// if attribute.can_be_downcast_to::<Collision2D>() {
+///     println!("Actor has a collider.");
+/// }
+/// ```
 pub trait Downcastable {
     fn can_be_downcast_to<T: 'static + Attribute>(&self) -> bool;
 }
@@ -242,6 +316,20 @@ pub fn cstr_rb() -> *const i8 {
     b"rb\0".as_ptr() as *const i8
 }
 
+/// ## Description
+/// Small numeric utility trait used to normalize numeric types into [f32].
+/// 
+/// In the engine, many rendering and physics APIs operate on `f32`.
+/// This trait allows both `f32` and `i32` values to be passed into
+/// APIs that expect floating-point values without explicit casting.
+/// 
+/// - **Item-Type**: Numeric Conversion Utility
+/// 
+/// ## Example
+/// ```
+/// let speed: i32 = 10;
+/// let velocity = speed.floatify(); // becomes 10.0f32
+/// ```
 pub trait Floatify {
     fn floatify(&self) -> f32;
 }
@@ -258,6 +346,24 @@ impl Floatify for i32 {
     }
 }
 
+/// ## Description
+/// Represents a runtime-level engine exception.
+/// 
+/// This type is used for recoverable runtime errors that occur during:
+/// - Global variable access
+/// - Asset loading
+/// - Command execution
+/// - Attribute interaction
+/// 
+/// Unlike Rust panics, this error is meant to be handled or emitted
+/// gracefully inside the engine runtime.
+/// 
+/// - **Item-Type**: Engine Runtime Error
+/// 
+/// ## Example
+/// ```
+/// return Err(RuntimeException::new("Player not found"));
+/// ```
 pub struct RuntimeException(pub String);
 
 impl RuntimeException {
@@ -270,6 +376,30 @@ impl RuntimeException {
     }
 }
 
+/// ## Description
+/// Utility trait for converting [Option<T>] into engine-compatible
+/// [Result] types with [RuntimeException].
+/// 
+/// This simplifies error propagation in engine code and avoids repetitive
+/// `match` statements.
+/// 
+/// It allows:
+/// - Converting existence checks into `Result<(), RuntimeException>`
+/// - Extracting values safely
+/// 
+/// - **Item-Type**: Error Handling Utility
+/// 
+/// ## Example
+/// Converting an existing [Result]-type into an Pine-compatible Result:
+/// ```
+/// some_action_that_might_yield_result.into_result("Error message");
+/// ```
+/// Turning an [Option<T>] into a Pine-compatible [RuntimeException]-Result:
+/// ```
+/// let y: Option<i32> = None;
+/// let x: Result<i32, RuntimeException> = y.into_result_value("Error: failed");
+/// let z: i32 = x?; // Throws RuntimeException - 'Error: failed'
+/// ```
 pub trait IntoResult<T> {
     fn into_result(&self, msg: &'static str) -> Result<(), RuntimeException>;
     fn into_result_string(&self, msg: String) -> Result<(), RuntimeException>;
@@ -302,8 +432,60 @@ impl<T: Clone> IntoResult<T> for Option<T> {
     }
 }
 
+/// ## Description
+/// Global time management utility of the engine.
+/// 
+/// Responsible for tracking frame-to-frame delta time and providing
+/// time-step information to physics, animation, and update systems.
+/// 
+/// Must be initialized once during engine startup using `Time::init()`.
+/// The engine loop must call `Time::update()` once per frame.
+/// 
+/// - **Item-Type**: Global Engine Timing System
+/// 
+/// ## Example
+/// ```
+/// Time::init();
+///
+/// loop {
+///     Time::update();
+///     let dt = Time::delta();
+///     player.velocity += 100.0 * dt;
+/// }
+/// ```
+///
+/// ## Technical Info
+/// Internally uses `OnceLock<Mutex<TimeState>>` to ensure:
+/// - Single initialization
+/// - Thread-safe delta updates
 pub struct Time;
 
+/// ## Description
+/// Global time management utility of the engine.
+/// 
+/// Responsible for tracking frame-to-frame delta time and providing
+/// time-step information to physics, animation, and update systems.
+/// 
+/// Must be initialized once during engine startup using `Time::init()`.
+/// The engine loop must call `Time::update()` once per frame.
+/// 
+/// - **Item-Type**: Global Engine Timing System
+/// 
+/// ## Example
+/// ```
+/// Time::init();
+///
+/// loop {
+///     Time::update();
+///     let dt = Time::delta();
+///     player.velocity += 100.0 * dt;
+/// }
+/// ```
+///
+/// ## Technical Info
+/// Internally uses `OnceLock<Mutex<TimeState>>` to ensure:
+/// - Single initialization
+/// - Thread-safe delta updates
 struct TimeState {
     last_frame: Instant,
     delta: f32,
@@ -316,7 +498,7 @@ impl Time {
         TIME_STATE.get_or_init(|| {
             Mutex::new(TimeState {
                 last_frame: Instant::now(),
-                delta: 0.
+                delta: 0.,
             })
         });
     }
@@ -348,6 +530,31 @@ impl Time {
     }
 }
 
+/// ## Description
+/// Represents an RGBA color used throughout the rendering system.
+/// 
+/// The engine uses this type instead of [sdl2::pixels::Color] to
+/// decouple core engine logic from SDL-specific types.
+/// 
+/// Provides predefined constants for common colors and supports
+/// conversion to/from SDL color types.
+/// 
+/// - **Item-Type**: Rendering Primitive
+/// 
+/// ## Example
+/// ```
+/// fn start() -> Result<(), RuntimeException> {
+///     let actor = make!(Actor::new("My Actor", "")); // actor with empty texture -> Material-based
+///     
+///     Engine::capture(actor.clone(), |actor| {
+///         actor.set_size(100, 100);   
+///         actor.set_color(Color::RED); // set material color to red
+///     });
+/// 
+///     Engine::spawn(actor)?;
+///     Ok(())
+/// }
+/// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Color(pub u8, pub u8, pub u8, pub u8);
 

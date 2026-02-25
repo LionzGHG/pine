@@ -1,6 +1,6 @@
 use std::{any::TypeId, collections::HashMap, path::Path, sync::{Arc, LazyLock, Mutex}};
 
-use crate::basic_attributes::Texture2D;
+use crate::{basic_attributes::Texture2D, video::MediaFile};
 
 /// ## Description
 /// The [Asset] trait is associated with every [Attribute](crate::Attribute) that has the ability to be **up- or downloaded**
@@ -58,6 +58,7 @@ pub trait AssetExt: Asset {
 }
 
 static mut TEXTURES: LazyLock<Arc<Mutex<HashMap<String, Texture2D>>>> = LazyLock::new(|| Arc::new(Mutex::new(HashMap::new())));
+static mut MEDIA_FILES: LazyLock<Arc<Mutex<HashMap<String, MediaFile>>>> = LazyLock::new(|| Arc::new(Mutex::new(HashMap::new())));
 
 /// ## Description
 /// The [Assets] struct is Pine's **asset browser**. You can use `Assets::add` to add an asset to the asset browser
@@ -96,21 +97,63 @@ impl Assets {
         return Some(TEXTURES.lock().unwrap().get(file.to_str().unwrap()).unwrap().clone());
     }
 
-    /// ## Description
-    /// `Assets::get` tries to download an [Asset] from a file into an actual [Attribute](crate::Attribute) that
-    /// you can work with in your code.
-    /// ## Example
-    /// ```
-    /// Assets::get::<Texture2D>("name_of_my_texture.png").unwrap();
-    /// ```
-    pub fn get<T: Asset + 'static + Clone>(res_name: &str) -> Option<T> {
-        unsafe {
-            if let Some(texture) = Assets::get_texture_2d(res_name) {
-                return Some((Box::new(texture) as Box<dyn Asset>).safecast::<T>()?.clone());
+    #[allow(static_mut_refs)]
+    unsafe fn get_media_file(res_name: &str) -> Option<MediaFile> {
+        let mut res = res_name.to_string();
+
+        if !res.contains(".mp4") {
+            res.push_str(".mp4");
+        }
+
+        println!("Current dir: {:?}", std::env::current_dir());
+        println!("Trying path: {:?}", Path::new("assets/videos").join(&res));
+
+        let name = Path::new("assets/videos")
+            .join(&res)
+            .canonicalize()
+            .ok()?;
+        let path = name.to_string_lossy().to_string();
+
+        if !MEDIA_FILES.lock().unwrap().contains_key(&path) {
+            if name.exists() {
+                Assets::add(res_name, MediaFile::new(path.clone()));
+            } else {
+                return None;
             }
         }
 
-        println!("WARNING: Missing texture: {}", res_name);
+        Some(MEDIA_FILES.lock().unwrap().get(&path)?.clone())
+    }
+
+    /// ## Description
+    /// `Assets::get` tries to download an [Asset] from a file into an actual [Attribute](crate::Attribute) that
+    /// you can work with in your code.
+    /// 
+    /// File extensions, if missing, are appended automatically.
+    /// ## Example
+    /// ```
+    /// let texture: Texture2D = Assets::get::<Texture2D>("name_of_my_texture.png").unwrap();
+    /// let video: MediaFile = Assets::get::<MediaFile>("name_of_my_video.mp4").unwrap();
+    /// ```
+    /// 
+    pub fn get<T: Asset + 'static + Clone>(res_name: &str) -> Option<T> {
+        unsafe {
+            if let Some(texture) = Assets::get_texture_2d(res_name) {
+                return Some((Box::new(texture) as Box<dyn Asset>)
+                    .safecast::<T>()?
+                    .clone()
+                );
+            }
+
+            if let Some(media_file) = Assets::get_media_file(res_name) {
+                return Some((Box::new(media_file) as Box<dyn Asset>)
+                    .safecast::<T>()?
+                    .clone()
+                );
+            }
+        }
+
+        println!("WARNING: Missing asset: {}", res_name);
         None
     }
 
@@ -120,6 +163,38 @@ impl Assets {
     pub fn add(res_name: &str, asset: impl Asset + AssetExt) {
         if asset.is::<Texture2D>() {
             Assets::add_texture2d(res_name, asset.to::<Texture2D>().clone());
+        }
+
+        if asset.is::<MediaFile>() {
+            Assets::add_media_file(res_name, asset.to::<MediaFile>().clone());
+        }
+    }
+
+    fn add_media_file(res_name: &str, media: MediaFile) {
+        let mut res = res_name.to_string();
+
+        if !res.ends_with(".mp4") {
+            res.push_str(".mp4");
+        }
+
+        let name = Path::new("assets/videos").join(&res);
+
+        if !name.exists() {
+            println!("WARNING: video file not found: {:?}", name);
+            return;
+        }
+
+        let path = name.canonicalize()
+            .unwrap()
+            .to_string_lossy()
+            .to_string();
+
+        unsafe {
+            let mut map = MEDIA_FILES.lock().unwrap();
+
+            if !map.contains_key(&path) {
+                map.insert(path, media);
+            }
         }
     }
 

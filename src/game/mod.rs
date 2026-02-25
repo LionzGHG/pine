@@ -26,16 +26,15 @@ fn on_collision(other: &mut Actor) {
     println!("Actor1 collided with Actor2.");
 }
 
-fn start() -> Result<(), RuntimeException> {
-
+fn start() -> Result<(), RuntimeException> {    
     let actor1 = make!(Actor::new("Actor1", ""));
 
     Engine::capture(actor1.clone(), |actor| {
         actor.set_color(Color::GREEN);
-        actor.set_size(Vec2::new(100, 100));
+        actor.set_size(vec2![100, 100]);
 
         let world_center = Engine::get_world_center();
-        actor.set_position(world_center - Vec2::new(0, 200));
+        actor.set_position(world_center - vec2![0, 0]);
 
         actor.add_attribute(
             Collision2D::new("Actor1", actor.get_size(), on_collision),
@@ -54,7 +53,7 @@ fn start() -> Result<(), RuntimeException> {
 
     Engine::capture(actor2.clone(), |actor| {
         actor.set_color(Color::BLUE);
-        actor.set_size(Vec2::new(100, 100));
+        actor.set_size(vec2![100, 100]);
         actor.set_position(Engine::get_world_center());
         actor.set_layer(Layer::GROUND);
 

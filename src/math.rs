@@ -2,6 +2,29 @@ use std::ops::{Add, Mul, Sub};
 
 use crate::util::Floatify;
 
+/// ## Description
+/// Represents a 2D vector in floating-point space.
+/// 
+/// `Vec2` is used extensively throughout the engine for:
+/// - Positions
+/// - Velocities
+/// - Sizes
+/// - Directions
+/// - Physics calculations
+/// 
+/// Supports common arithmetic operations such as:
+/// - Addition
+/// - Subtraction
+/// - Scalar multiplication
+/// 
+/// - **Item-Type**: Mathematical Primitive
+/// 
+/// ## Example
+/// ```
+/// let a = Vec2::new(10, 20);
+/// let b = Vec2::new(5.0, 3.0);
+/// let result = a + b;
+/// ```
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
 pub struct Vec2 {
     pub x: f32,
@@ -38,6 +61,44 @@ impl Add<Self> for Vec2 {
     }
 }
 
+/// ## Description
+/// Creates a new [`Vec2`] from two numeric values.
+///
+/// Accepts any type implementing [Floatify], allowing both
+/// integers and floating-point values to be passed directly.
+///
+/// This improves ergonomics when mixing [`i32`] and [`f32`]
+/// values in gameplay code.
+///
+/// ## Example
+/// ```
+/// let v = vec2![10, 20.5];
+/// ```
+/// ## Technical Info
+/// Macro `vec2` expands to:
+/// ```
+/// Vec2::new($x, $x);
+/// ```
+#[macro_export]
+macro_rules! vec2 {
+    [$x:expr, $y:expr] => {
+        Vec2::new($x, $y)
+    };
+    [$x:expr] => {
+        Vec2::new($x, $x)
+    };
+    [] => {
+        Vec2::new(0, 0)
+    };
+}
+
+/*
+#[inline(always)]
+pub fn vec2(x: impl Floatify, y: impl Floatify) -> Vec2 {
+    Vec2::new(x, y)
+}
+*/
+
 impl Vec2 {
 
     pub const ZERO: Vec2 = Vec2::new_f32(0., 0.);
@@ -46,7 +107,20 @@ impl Vec2 {
     pub const fn new_f32(x: f32, y: f32) -> Self {
         Vec2 { x, y }
     }
-    
+
+    /// ## Description
+    /// Creates a new [`Vec2`] from numeric values.
+    ///
+    /// Accepts any type implementing [Floatify], allowing both
+    /// integers and floating-point values to be passed directly.
+    ///
+    /// This improves ergonomics when mixing [`i32`] and [`f32`]
+    /// values in gameplay code.
+    ///
+    /// ## Example
+    /// ```
+    /// let v = Vec2::new(10, 20.5);
+    /// ```
     pub fn new(x: impl Floatify, y: impl Floatify) -> Vec2 {
         Vec2 { x: x.floatify(), y: y.floatify() }
     }
@@ -56,8 +130,25 @@ impl Vec2 {
     }
 }
 
-/// # Description
-/// Mathematical construct to represent a point in 2d-space. 
+/// ## Description
+/// Represents an integer-based coordinate in 2D space.
+/// 
+/// Unlike [Vec2], which is used for continuous floating-point
+/// calculations, `Point` is typically used for:
+/// - Pixel coordinates
+/// - Grid positions
+/// - SDL interaction
+/// - Discrete spatial checks
+/// 
+/// - **Item-Type**: Mathematical Primitive
+/// 
+/// ## Example
+/// ```
+/// let p = Point(100, 200);
+/// if p.in_area(Point(0, 0), Point(1920, 1080)) {
+///     println!("Inside screen bounds");
+/// }
+/// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Point(pub i32, pub i32);
 
@@ -83,11 +174,43 @@ impl Point {
         self.y() >= min_y && self.y() <= max_y
     }
 
+    /// ## Description
+    /// Converts this integer-based [`Point`] into a floating-point [`Vec2`].
+    ///
+    /// Useful when transitioning from discrete coordinate systems
+    /// (e.g. mouse input) into physics or rendering calculations.
+    ///
+    /// ## Example
+    /// ```
+    /// let p = Point(10, 20);
+    /// let v = p.as_vec2();
+    /// ```
     pub fn as_vec2(&self) -> Vec2 {
         Vec2::new(self.x() as f32, self.y() as f32)
     } 
 }
 
+/// ## Description
+/// Collection of common mathematical utility functions used
+/// throughout the engine.
+/// 
+/// Provides helpers for:
+/// - Interpolation
+/// - Range mapping
+/// - Angle conversion
+/// - Floating-point comparison
+/// - Vector rotation
+/// 
+/// Centralizing these operations ensures consistent mathematical
+/// behavior across physics, animation, and rendering systems.
+/// 
+/// - **Item-Type**: Math Utility Namespace
+/// 
+/// ## Example
+/// ```
+/// let progress = Math::inverse_lerp(75.0, 0.0, 100.0);
+/// let smooth = Math::smoothstep(progress);
+/// ```
 pub struct Math;
 
 impl Math {
@@ -310,6 +433,23 @@ impl Math {
         }
     }
 
+    /// ## Description
+    /// Applies a delta rotation and keeps the result within
+    /// the 0°–360° range.
+    ///
+    /// Uses Euclidean remainder to prevent negative angles
+    /// or overflow beyond one full rotation.
+    ///
+    /// Useful for:
+    /// - Sprite rotation
+    /// - Camera rotation
+    /// - Continuous angular updates
+    ///
+    /// ## Example
+    /// ```
+    /// let rotation = Math::rotate(350.0, 20.0);
+    /// assert_eq!(rotation, 10.0);
+    /// ```
     pub fn rotate(current_rotation: f32, delta_degrees: f32) -> f32 {
         (current_rotation + delta_degrees).rem_euclid(360.0)
     }

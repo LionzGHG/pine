@@ -1,5 +1,25 @@
 use crate::prelude::*;
 
+/// ## Description
+/// Represents a logical rendering and physics layer.
+/// 
+/// Layers are primarily used for:
+/// - Collision filtering
+/// - Physics ground detection
+/// - Logical grouping of actors
+/// 
+/// Actors can be assigned to layers to control interaction behavior.
+/// 
+/// - **Item-Type**: Engine Layer Identifier
+/// 
+/// ## Example
+/// ```
+/// actor.set_layer(Layer("My Layer"));
+/// ```
+/// There are also default layers, such as `GROUND` used for ground detection in physics:
+/// ```
+/// actor.set_layer(Layer::GROUND);
+/// ```
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub struct Layer(pub &'static str);
 
@@ -10,6 +30,34 @@ impl Layer {
 
 pub type CollisionCallback = fn(&mut Actor);
 
+/// ## Description
+/// **Axis-aligned bounding box** (AABB) collision attribute.
+/// 
+/// When attached to an [Actor], this attribute:
+/// - Computes world-space bounds
+/// - Detects intersections with other colliders
+/// - Optionally triggers a **collision callback**
+/// 
+/// Used for:
+/// - Trigger events
+/// - Basic 2D collision detection
+/// 
+/// - **Item-Type**: Attribute (Collision)
+/// 
+/// ## Example
+/// ```
+/// actor.add_attribute(
+///     Collision2D::new("Player", actor.get_size(), on_hit),
+///     "collider"
+/// );
+/// ```
+/// Or without collision callback:
+/// ```
+/// actor.add_attribute(
+///     Collision2D::new_no_callback("Player", actor.get_size()),
+///     "collider"
+/// );
+/// ```
 #[derive(Debug, Clone)]
 pub struct Collision2D {
     pub owner: String,
@@ -105,6 +153,32 @@ impl Attribute for Collision2D {
     }
 }
 
+/// ## Description
+/// Simple gravity-based vertical physics attribute.
+/// 
+/// Applies:
+/// - Constant gravitational acceleration
+/// - Vertical velocity integration
+/// - Ground collision resolution
+/// 
+/// Requires:
+/// - A [Collision2D] attribute on the same actor
+/// - A defined ground layer for collision filtering
+/// 
+/// - **Item-Type**: Attribute (Physics)
+/// 
+/// ## Example
+/// ```
+/// actor.add_attribute(
+///     Physics2D::new("Player", Layer::GROUND),
+///     "physics"
+/// );
+/// ```
+///
+/// ## Technical Info
+/// - Uses `Time::delta()`
+/// - Caps delta to prevent large physics jumps
+/// - Performs AABB overlap resolution vertically only
 #[derive(Debug, Clone)]
 pub struct Physics2D {
     pub owner: String,

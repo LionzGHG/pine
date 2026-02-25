@@ -4,7 +4,37 @@ use crate::util::Color;
 
 pub use crate::Attribute;
 use crate::{assets::{Asset, AssetExt}, math::{Point, Vec2}, util::Floatify};
-
+ 
+/// ## Description
+/// Defines the visual surface properties of a renderable element.
+/// 
+/// Currently, a `Material` only contains a flat [Color], but it acts as a
+/// future-proof abstraction layer for more advanced rendering features such as:
+/// - Shaders
+/// - Lighting parameters
+/// - Texture blending
+/// 
+/// In the engine, materials are typically associated with rendering
+/// components to control how an object appears on screen.
+/// 
+/// An [Actor](crate::prelude::Actor) uses an [Material] whenever you create it without a [texture](Texture2D).
+/// 
+/// - **Item-Type**: Rendering Attribute
+/// 
+/// ## Example
+/// ```
+/// fn start() -> Result<(), RuntimeException> {
+///     let actor = make!(Actor::new("My Actor", "")); // leave second parameter as empty string -> no texture
+///     
+///     Engine::capture(actor.clone(), |actor|) {
+///         actor.set_size(100, 100); // since no texture is set, you must assign size manually
+///                                   // otherwise `actor.transform.x` and `actor.transform.y` will equal 0
+///         actor.set_material(Material::new(Color::RED)); // or, just use: `actor.set_color(Color::RED);`
+///     }
+/// 
+///     Ok(())
+/// }
+/// ```
 #[derive(Debug, Clone)]
 pub struct Material {
     pub color: Color,
@@ -87,19 +117,37 @@ impl Transform {
 }
 
 /// ## Description
-/// **Item-Type**: [Basic Attribute](crate::basic_attributes).
+/// **Item-Type**: Basic Attribute / Asset.
 /// 
-/// [Textures](Texture2D) are used to upload images onto the screen. By using the [Texture2D] [attribute](crate::Attribute)
-/// you can link an image file to a specific [Component](crate::Component) in your game world.
+/// Represents a 2D texture loaded from disk and uploaded to the GPU.
 /// 
-/// Use the [Asset browser](crate::assets::Assets) to upload an image file using the [new](Texture2D::new) function.
+/// `Texture2D` serves two purposes:
+/// - As an [Asset], representing a file path stored in the asset system
+/// - As an [Attribute], attaching the texture to a renderable component
+/// 
+/// The engine resolves the file path into an SDL texture internally.
+/// The `sdl_texture` pointer is managed by the renderer backend.
+/// 
+/// - Used for sprites, UI images, backgrounds
+/// - Attached to an [Actor](crate::prelude::Actor) or rendering component
+/// 
+/// Usually, textures are applied to actors on creation. If you want to apply a texture to a non-actor [Component](crate::prelude::Component),
+/// you'll have to add it as an [Attribute] directly.
 /// ## Example
+/// Textures on actors:
 /// ```
-/// fn __start__(commands: &mut Commands) {
-///     let player_image = Assets::get<Texture2D>("player.png").unwrap();
-///     let texture = Texture2D::new(player_image);
-///     let player_actor = Actor::new("Player", texture);
-/// }
+/// let actor = make!(Actor::new("ActorName", "ActorTextureName"));
+/// ```
+/// Textures on other components:
+/// ```
+/// let component = make!(MyComponent::new("ComponentName"));
+/// 
+/// Engine::capture_any::<MyComponent>(my_component.clone(), |mc| {
+///     mc.add_attribute(
+///         Texture2D::new("ComponentTexturePath"),
+///         "MyComponent_Texture"
+///     );
+/// });
 /// ```
 #[derive(Clone, Debug)]
 pub struct Texture2D {

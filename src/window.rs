@@ -17,36 +17,86 @@ pub(in crate) fn compute_target_frame_time_from_target_fps(target_fps: f32) -> f
 }
 
 /// ## Description
-/// The [Window] struct is the starting point of your application. You can create a basic window by using the
-/// [new](Window::new) method, which expects:
-/// - `title`: The title of your window, displayed at the top left
-/// - `on_start`: A method, that runs once at application start-up, following this scheme: `fn __start__(&mut commands: Commands) {}`
-/// - `on_tick`: A method, that runs once every tick, following this scheme: `fn __update__(&mut commands: Commands) {}` 
-/// If you want to tweak additional parameters, you can access the other fields of the [Window] struct:
-/// - `pos_x`: The x-position of the window
-/// - `pos_y`: The y-position of the window
-/// - `width`: The width of the window
-/// - `height`: the height of the window
+/// The [`Window`] struct is the entry point of every **Pine** application.
 /// 
-/// Additionally, you can connect an assortment of other methods to possible events, those are:
-/// - `on_key_down`: A function that runs, whenever a key is pressed (click [here](Window::on_key_down) for further information)
-/// The field `running` tells you, whether the window is currently running or not.
-/// 
-/// Use the [run](Window::run) method to tell the program that it should start running.
-/// 
-/// You can create a simple example window like this:
+/// ### Recommended Usage (No-Commands Mode)
+/// The modern and recommended way to use Pine is via:
+/// ```
+/// let window = Window::new_no_commands("My Window", start, update);
+/// ```
+///
+/// In this mode:
+/// - Your `start` function has the signature:
+///   `fn start() -> Result<(), RuntimeException>`
+/// - Your `update` function has the signature:
+///   `fn update() -> Result<(), RuntimeException>`
+/// - You access engine functionality through [`Engine`] instead of `&mut Commands`.
+///
+/// This results in cleaner and more ergonomic application code.
+///
+/// ---
+///
+/// ### Legacy Usage (With `&mut Commands`)
+/// The older API uses:
+/// ```
+/// let window = Window::new("My Window", start, update);
+/// ```
+///
+/// where callbacks receive `&mut Commands`.
+///
+/// This mode is still supported but **not recommended** for new projects.
+/// Prefer [`Window::new_no_commands`].
+///
+/// ---
+///
+/// ## Window Configuration
+/// You can configure:
+/// - `width`, `height` — pixel size of the window
+/// - `logical_width`, `logical_height` — internal world resolution
+/// - `pos_x`, `pos_y` — window position
+/// - `target_fps` — desired frame rate
+///
+/// ---
+///
+/// ## Event Handling
+/// Pine uses callback-based event handling.
+///
+/// Recommended callbacks:
+/// - [`on_key_down_no_commands`](Window::on_key_down_no_commands)
+/// - [`on_mouse_button_down_no_commands`](Window::on_mouse_button_down_no_commands)
+/// - [`on_mouse_motion_no_commands`](Window::on_mouse_motion_no_commands)
+///
+/// Legacy alternatives (not recommended):
+/// - [`on_key_down`](Window::on_key_down)
+/// - [`on_mouse_button_down`](Window::on_mouse_button_down)
+/// - [`on_mouse_motion`](Window::on_mouse_motion)
+///
+/// ---
+///
+/// ## Starting the Application
+/// Call [`run`](Window::run) to start the main loop.
+///
+/// ---
+///
+/// ## Minimal Example (Recommended)
 /// ```
 /// fn main() {
-///     let window = Window::new("My Window", __start__, __update__);
+///     let mut window = Window::new_no_commands("My Window", start, update);
+///     window.on_key_down_no_commands(on_key_down);
 ///     window.run();
 /// }
 /// 
-/// fn __start__(&mut commands: Commands) {
-///     println!("Program has started!");
+/// fn on_key(keycode: i32) -> Result<(), RuntimeException> {
+///     println!("Key {} pressed!", KeyCode::key_name_of(keycode));
 /// }
-/// 
-/// fn __update__(&mut commands: Commands) {
-///     println!("Program is running!");
+///
+/// fn start() -> Result<(), RuntimeException> {
+///     println!("Application started");
+///     Ok(())
+/// }
+///
+/// fn update() -> Result<(), RuntimeException> {
+///     Ok(())
 /// }
 /// ```
 pub struct Window {
@@ -80,6 +130,17 @@ pub struct Window {
 }
 
 impl Window {
+    /// ## Description (Legacy API)
+    /// Creates a new [`Window`] using the **old Commands-based API**.
+    ///
+    /// Your callbacks must follow:
+    /// ```
+    /// fn start(commands: &mut Commands) -> Result<(), RuntimeException>
+    /// fn update(commands: &mut Commands) -> Result<(), RuntimeException>
+    /// ```
+    ///
+    /// This API is still supported but **not recommended**.
+    /// Prefer [`Window::new_no_commands`] for modern Pine applications.
     pub fn new(title: &str, on_start: impl Fn(&mut Commands) -> Result<(), RuntimeException> + 'static, on_tick: impl Fn(&mut Commands) -> Result<(), RuntimeException> + 'static) -> Window {
         unsafe {
             SDL_Init(SDL_INIT_VIDEO);
@@ -120,6 +181,18 @@ impl Window {
         }   
     }
 
+    /// ## Description (Recommended)
+    /// Creates a new [`Window`] using the modern **no-commands API**.
+    ///
+    /// Your callbacks must follow:
+    /// ```
+    /// fn start() -> Result<(), RuntimeException>
+    /// fn update() -> Result<(), RuntimeException>
+    /// ```
+    ///
+    /// Use [`Engine`] to access engine functionality inside your callbacks.
+    ///
+    /// This is the preferred way to build Pine applications.    
     pub fn new_no_commands(title: &str, on_start: impl Fn() -> Result<(), RuntimeException> + 'static, on_tick: impl Fn() -> Result<(), RuntimeException> + 'static) -> Window {
         unsafe {
             SDL_Init(SDL_INIT_VIDEO);
@@ -161,11 +234,32 @@ impl Window {
         }
     }
 
+    /// ## Description
+    /// Sets a new target frames-per-second value.
+    ///
+    /// This automatically recalculates the internal
+    /// frame duration (`target_frame_time`).
+    ///
+    /// ## Safety
+    /// Marked unsafe because changing timing behavior
+    /// during runtime may affect internal assumptions.
+    /// 
+    /// Target fps-rate is set internally by default as **60 FPS**.
     pub unsafe fn set_target_fps(&mut self, target_fps: f32) {
         self.target_fps = target_fps;
         self.target_frame_time = compute_target_frame_time_from_target_fps(target_fps);
     }
 
+    /// ## Description
+    /// Sets the internal logical resolution of the world.
+    ///
+    /// This defines the coordinate system used for rendering,
+    /// independent of the actual pixel size of the window.
+    ///
+    /// The renderer automatically adjusts scaling to preserve
+    /// aspect ratio.
+    /// 
+    /// Use **even numbers** (preferrably multiples of 10).
     pub fn set_logical_size(&mut self, width: usize, height: usize) {
         self.renderer.logical_width = width as f32;
         self.renderer.logical_height = height as f32;
@@ -183,11 +277,17 @@ impl Window {
         (self.logical_width, self.logical_height)
     }
 
-    /// ## Description
-    /// `on_key_down` allows you to specify a method that runs every time a key press is performed and recognized.
-    /// 
-    /// The **key down callback function** allows you to access parameters such as [Commands] and the `keycode` of
-    /// the pressed key. You can use `if` to compare this `i32`-value to an existing [KeyCode](crate::util::KeyCode).
+    /// ## Description (Legacy)
+    /// Registers a key-down callback using the `&mut Commands` API.
+    ///
+    /// Signature:
+    /// ```
+    /// fn callback(commands: &mut Commands, keycode: i32)
+    ///     -> Result<(), RuntimeException>
+    /// ```
+    ///
+    /// This API is still supported but not recommended.
+    /// Prefer [`on_key_down_no_commands`](Window::on_key_down_no_commands).
     /// ## Example
     /// ```
     /// fn main() {
@@ -197,10 +297,12 @@ impl Window {
     ///     window.run();
     /// }
     /// 
-    /// fn __key_callback__(_commands: &mut Commands, keycode: i32) {
+    /// fn __key_callback__(_commands: &mut Commands, keycode: i32) -> Result<(), RuntimeException> {
     ///     if keycode == KeyCode::SPACE {
     ///         println!("Spacebar pressed!")
     ///     }
+    /// 
+    ///     Ok(())
     /// }
     /// ```
     pub fn on_key_down<F: Fn(&mut Commands, i32) -> Result<(), RuntimeException> + 'static>(&mut self, f: F) {
@@ -212,6 +314,13 @@ impl Window {
     /// 
     /// The **key down callback function** allows you to access the `keycode` of
     /// the pressed key. You can use `if` to compare this `i32`-value to an existing [KeyCode](crate::util::KeyCode).
+    /// 
+    /// Signature:
+    /// ```
+    /// fn callback(keycode: i32) -> Result<(), RuntimeException>
+    /// ```
+    ///
+    /// Access engine state through [`Engine`] inside the callback.
     /// ## Example
     /// ```
     /// fn main() {
@@ -275,6 +384,28 @@ impl Window {
         }
     }
 
+    /// ## Description
+    /// Starts the main application loop.
+    ///
+    /// Internally this method:
+    /// - Initializes the active [`Commands`] context
+    /// - Calls `start` / `start_no_commands` once
+    /// - Enters the main loop
+    /// - Polls SDL events
+    /// - Dispatches event callbacks
+    /// - Updates active components
+    /// - Calls `update` / `update_no_commands`
+    /// - Handles frame limiting via `target_fps`
+    ///
+    /// The loop runs until:
+    /// - A quit event is received
+    /// - `self.running` is set to `false`
+    ///
+    /// After termination, SDL resources are cleaned up automatically.
+    ///
+    /// ## Important
+    /// When using the recommended no-commands mode,
+    /// [`Engine`] internally manages access to [`Commands`].
     pub fn run(&mut self) {
         self.running = true;
         self.set_logical_size(self.logical_width, self.logical_height);

@@ -5,3 +5,4 @@ edition = "2021"
 
 [dependencies]
 sdl2 = { version = "0.38", features = ["bundled", "image"] }
+ffmpeg-next = "8.0.0"

@@ -73,7 +73,7 @@
 //! }
 //! 
 //! pub fn on_key_down(keycode: i32) -> Result<(), RuntimeException> {
-//!     let mut player = Engine::find::<Actor>("Player");
+//!     let mut player = Engine::get_actor("Player");
 //! 
 //!     if keycode == KeyCode::UP {    
 //!         player.transform.y -= 10;
@@ -96,8 +96,26 @@
 //! 
 //! pub fn update() -> Result<(), RuntimeException> {}
 //! ``` 
+//! ## Tests
+//! use `pine::tests::Test` to run specific tests and see what the engine can do! Look up the code for the
+//! specific tests for reference and as examples:
+//! ```
+//! use pine::tests::*;
+//! 
+//! fn main() {
+//!     Test::start::<MinimalTest>().verify();
+//! }
+//! ```
+//! ## How To Run
+//! 1. Open `x64 Native Tools Command Prompt for VS 2022`
+//! 2. set environment variable `set VCPKG_ROOT=E:\vcpkg\vcpkg`
+//! 3. set environment variable `set VCPKG_DEFAULT_TRIPLET=x64-windows`
+//! 4. verify `echo %VCPKG_ROOT%` and `where vcpkg`
+//! 5. Must point to: "E:\vcpkg\vcpkg"
+//! 6. run `cargo run`
 
 pub type ComponentPointer = Rc<RefCell<dyn Component>>;
+// pub struct ComponentPointer<T: Component>(pub Rc<RefCell<T>>);
 
 pub mod basic_components;
 pub mod window;
@@ -107,6 +125,8 @@ pub mod assets;
 pub mod basic_attributes;
 pub mod math;
 pub mod physics;
+pub mod video;
+pub mod tests;
 
 use std::cell::{RefCell, RefMut};
 use std::ffi::CString;
@@ -170,18 +190,94 @@ thread_local! {
 pub struct Engine;
 
 impl Engine {
+    /// ## Description
+    /// Returns the current world size as `(width, height)` in world coordinates.
+    ///
+    /// The values correspond to the dimensions configured for the running
+    /// [`Window`](crate::window::Window) instance and are retrieved from the
+    /// active [`Commands`] context.
+    /// 
+    /// You can change the **logical size** of your game world using the [`.set_logical_size`](crate::window::Window::set_logical_size) method
+    /// of your [Window](crate::window::Window) instance. 
+    ///
+    /// ## Example
+    /// ```
+    /// fn main() {
+    ///     let mut window = Window::new_no_commands("My Window", start, update);
+    ///     window.set_logical_size(100, 100); // changes world-grid NOT window bounds (pixels)!!!
+    /// }
+    /// 
+    /// fn start() -> Result<(), RuntimeException> {
+    ///     let world_size: (f32, f32) = Engine::get_world_size();
+    /// }
+    /// 
+    /// fn update() -> Result<(), RuntimeException> {}
+    /// ```
+    /// 
+    /// ## Panics
+    /// Panics if called outside of a running application context
+    /// (i.e. outside of `Window::run`).
     pub fn get_world_size() -> (f32, f32) {
         Engine::with_commands(|cmds| cmds.world_size).unwrap()
     }
 
+    pub fn get_world_top() -> Vec2 {
+        vec2![0, Engine::get_height()]
+    }
+
+    pub fn get_world_bottom() -> Vec2 {
+        vec2![0, -Engine::get_height()]
+    }
+
+    pub fn get_world_left_edge() -> Vec2 {
+        vec2![Engine::get_width(), 0]
+    }
+
+    pub fn get_world_right_edge() -> Vec2 {
+        vec2![-Engine::get_width(), 0]
+    }
+
+    /// ## Description
+    /// Returns the current world height.
+    ///
+    /// Equivalent to:
+    /// ```
+    /// Engine::get_world_size().1
+    /// ```
+    #[inline(always)]
     pub fn get_height() -> f32 {
         Engine::get_world_size().1
     }
 
+    /// ## Description
+    /// Returns the current world width.
+    ///
+    /// Equivalent to:
+    /// ```
+    /// Engine::get_world_size().0
+    /// ```
+    #[inline(always)]
     pub fn get_width() -> f32 {
         Engine::get_world_size().0
     }
 
+    #[inline(always)]
+    pub fn get_half_height() -> f32 {
+        Engine::get_height() / 2.
+    }
+
+    #[inline(always)]
+    pub fn get_half_width() -> f32 {
+        Engine::get_width() / 2.
+    }
+
+    /// ## Description
+    /// Returns the center of the world as a [`Vec2`](crate::math::Vec2).
+    ///
+    /// This is calculated as:
+    /// `(width / 2, height / 2)`.
+    ///
+    /// Useful for positioning actors relative to the screen center.
     pub fn get_world_center() -> crate::math::Vec2 {
         Engine::with_commands(|cmds| {
             let hw = cmds.world_size.0 / 2.;
@@ -190,6 +286,48 @@ impl Engine {
         }).unwrap()
     }
 
+    /// ## Description
+    /// Temporarily borrows a component wrapped in [`Rc<RefCell<_>>`] [(ComponentPointer)](crate::ComponentPointer)
+    /// and executes a closure on its mutable reference.
+    ///
+    /// This is a utility helper for safely accessing component internals
+    /// without manually calling `borrow_mut()` or [`get!`].
+    ///
+    /// **Notice**: Use [`Engine::capture`] for [Actors](Actor) instead!
+    /// 
+    /// ## Example
+    /// ```
+    /// let component = make!(MyComponent::new("Some Component"));
+    /// Engine::capture_any::<MyComponent>(component, |c| {
+    ///     c.set_size(vec2![100, 100]);
+    ///     c.set_position(Engine::get_world_center());
+    /// });
+    /// ```
+    pub fn capture_any<C, F>(component: Rc<RefCell<C>>, f: F)
+    where
+        C: Component + 'static,
+        F: FnOnce(&mut C),
+    {
+        let mut borrowed = component.borrow_mut();
+        f(&mut borrowed)
+    }
+
+    /// ## Description
+    /// Temporarily borrows an [`Actor`](crate::prelude::Actor)
+    /// wrapped in `Rc<RefCell<_>>` ([ComponentPointer]) and executes a closure on it.
+    ///
+    /// This is equivalent to manually calling `borrow_mut()` or [`get!`] on the actor for every action.
+    /// 
+    /// For [Components](Component) other than [Actors](Actor), use [`Engine::capture_any<C>`] instead.
+    ///
+    /// **Notice**: Use `.clone()` when passing an actor if you want to use them again afterwards!
+    /// 
+    /// ## Example
+    /// ```
+    /// Engine::capture(actor, |a| {
+    ///     a.set_position(vec2![100, 100]);
+    /// });
+    /// ```
     pub fn capture<F>(actor: Rc<RefCell<crate::prelude::Actor>>, f: F)
     where
         F: FnOnce(&mut crate::prelude::Actor),
@@ -225,12 +363,39 @@ impl Engine {
         }).unwrap().expect("[PINE] ACTOR NOT FOUND: actor was not found.")
     }
 
+    /// ## Description
+    /// Searches for a [Component] by its unique id and returns
+    /// a pointer (`Rc<RefCell<T>>`) ([ComponentPointer]) to it if found.
+    ///
+    /// Unlike [`find`](Engine::find), this method does **not** panic.
+    /// Instead, it returns `None` if no matching component exists.
+    ///
+    /// ## Example
+    /// ```
+    /// if let Some(actor) = Engine::find_as_ptr::<Actor>("Player") {
+    ///     let actor_ref = actor.borrow_mut();
+    /// }
+    /// ```
     pub fn find_as_ptr<T: Component + 'static>(id: &str) -> Option<Rc<RefCell<T>>> {
         Engine::with_commands_static(|cmds| {
             cmds.find_as_ptr::<T>(id)
         }).unwrap()
     }
 
+    /// ## Description
+    /// Retrieves an [`Actor`](crate::prelude::Actor) by id.
+    ///
+    /// Returns a [RuntimeException] if no actor with the given id exists.
+    ///
+    /// This is a convenience wrapper around
+    /// [`find_as_ptr`](Engine::find_as_ptr) for [Actors](Actor).
+    /// ## Example
+    /// ```
+    /// let actor = Engine::get_actor("My Actor")?;
+    /// Engine::capture(actor.clone(), |actor| {
+    ///     // ...
+    /// });
+    /// ```
     pub fn get_actor(id: &str) -> Result<Rc<RefCell<Actor>>, RuntimeException> {
         let actor = Engine::find_as_ptr::<Actor>(id);
         actor.into_result_value(format!("Actor '{id}' not found"))
@@ -256,6 +421,14 @@ impl Engine {
         }).into_result_string(format!("Failed to destroy component '{}'", id))
     }
 
+    /// ## Description
+    /// Removes a global variable from the internal global storage.
+    ///
+    /// After deletion, calls to
+    /// [`get_global_var`](Engine::get_global_var) with the same id
+    /// will panic or return an error (depending on context).
+    ///
+    /// This operation is silent and does not return a result.
     pub fn delete_global_var(id: &'static str) {
         Engine::with_commands(|cmds| {
             cmds.delete_global_var(id);
@@ -334,6 +507,14 @@ impl Engine {
         }).into_result_string(format!("Failed to add global variable '{}'", id))
     }
 
+    /// ## Description
+    /// Sets the currently active [`Commands`] pointer.
+    ///
+    /// This method is used internally by
+    /// [`Window::run`](crate::window::Window::run)
+    /// to manage the active execution context.
+    ///
+    /// It should not be called manually in user code.
     pub(crate) fn set_active_commands(commands: Option<*mut Commands>) {
         ACTIVE_COMMANDS.with(|slot| {
             *slot.borrow_mut() = commands;
@@ -341,11 +522,21 @@ impl Engine {
     }
 
     /// ## Description
-    /// Returns an instance of the currently active [Commands] instance as `&'static mut Commands` within an `no_commands` environment.
-    /// ## Unsafe
-    /// [Engine] has wrappers for almost all [Commands] functions. If you can, use them instead. Otherwise, check if you can use  
-    /// [with_commands](Engine::with_commands) or [with_commands_static](Engine::with_commands_static). **Only** use this
-    /// method if there is absolutely no other alternative. 
+    /// Provides access to the currently active [`Commands`] instance
+    /// as a `&'static mut Commands`.
+    ///
+    /// ## Safety
+    /// This method bypasses Rust’s borrow checker guarantees and relies
+    /// on internal invariants upheld by the engine runtime.
+    ///
+    /// Prefer using:
+    /// - [`with_commands`](Engine::with_commands)
+    /// - [`with_commands_static`](Engine::with_commands_static)
+    ///
+    /// Only use this function when absolutely necessary.
+    ///
+    /// ## Panics
+    /// Panics if no active [`Commands`] context exists.
     pub unsafe fn get_active_commands() -> &'static mut Commands {
         ACTIVE_COMMANDS.with(|slot| {
             let ptr = (*slot.borrow()).unwrap();
@@ -356,9 +547,13 @@ impl Engine {
     }
 
     /// ## Description
-    /// Creates a local scope, where [Commands] is borrowed (as `&'static mut Commands`).
-    /// 
-    /// [Engine] has wrappers for almost all [Commands] functions. If you can, use them instead.
+    /// Creates a local execution scope with access to the currently
+    /// active [`Commands`] instance as `&'static mut Commands`.
+    ///
+    /// This is primarily intended for internal engine usage or advanced
+    /// integrations where the `'static` lifetime is required.
+    ///
+    /// Prefer [`with_commands`](Engine::with_commands) when possible.
     pub fn with_commands_static<R>(f: impl FnOnce(&'static mut Commands) -> R) -> Option<R> {
         let commands = unsafe { Engine::get_active_commands() };
         Some(f(commands))
@@ -598,6 +793,7 @@ use std::mem::MaybeUninit;
 use sdl2::{sys::{SDL_CreateRenderer, SDL_CreateWindow, SDL_Event, SDL_INIT_VIDEO, SDL_Init, SDL_PollEvent, SDL_Renderer, SDL_Window}};
 use sdl2::sys::{SDL_CreateTextureFromSurface, SDL_DestroyRenderer, SDL_DestroyWindow, SDL_EventType, SDL_FreeSurface, SDL_LoadBMP_RW, SDL_Quit, SDL_RWFromFile, SDL_RWops, SDL_Surface, SDL_Texture, image};
 
+use crate::math::Vec2;
 use crate::prelude::{Actor, Texture2D};
 use crate::util::{ComponentSafecastRc, RuntimeException};
 use crate::util::{AnySafecast, ComponentReferenceSafecast, IntoResult, cstr_rb};
@@ -762,7 +958,7 @@ pub trait Component: std::any::Any {
     /// Everything apart from rendering, that is, everything that does not need to be regenerated each tick goes into the
     /// [init](Component::init) method instead. 
     fn init(&self, handle: &mut Handle);
-    
+
     /// ## Description
     /// This returns the unique identifier of this [Component], usually, you'll let this be set by the user on initialization,
     /// or you automatically assing a name based on a standardized naming convention.

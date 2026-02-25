@@ -20,3 +20,5 @@ pub use crate::util::Time;
 pub use crate::physics::{Collision2D, Physics2D, Layer};
 pub use crate::basic_attributes::Material;
 pub use crate::util::Color;
+pub use crate::video::{MediaFile, Video2D, VideoSettings};
+pub use crate::vec2;
