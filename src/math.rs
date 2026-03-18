@@ -72,7 +72,9 @@ impl Add<Self> for Vec2 {
 ///
 /// ## Example
 /// ```
-/// let v = vec2![10, 20.5];
+/// let v1 = vec2![10, 20.5];   // Vec2::new(10, 20.5)
+/// let v2 = vec2![10];         // Vec2::new(10, 10)
+/// let v3 = vec2![];           // Vec2::new(0, 0)
 /// ```
 /// ## Technical Info
 /// Macro `vec2` expands to:

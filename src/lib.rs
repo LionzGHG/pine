@@ -401,6 +401,19 @@ impl Engine {
         actor.into_result_value(format!("Actor '{id}' not found"))
     }
 
+    pub fn clear_scene() -> Result<(), RuntimeException> {
+        Engine::with_commands(|cmds| {
+            let ids: Vec<_> = cmds.active_components
+                .iter()
+                .map(|c| c.borrow().component_id())
+                .collect();
+
+            for id in ids {
+                cmds.destroy(id);
+            }
+        }).into_result("Failed to clear scene")
+    }
+
     /// ## Description
     /// Removes an active component from the list of active components, effectively destroying it and removing it
     /// from the game scene.
@@ -450,7 +463,6 @@ impl Engine {
     /// If you want your component to be renderable, you'll have to include that into the [render](Component::render) method of your component.
     /// Everything apart from rendering, that is, everything that does not need to be regenerated each tick goes into the
     /// [init](Component::init) method instead. 
-
     pub fn spawn(component: Rc<RefCell<dyn Component + 'static>>) ->  Result<(), RuntimeException> {
         Engine::with_commands(|cmds| {
             cmds.spawn(component.clone());
@@ -479,7 +491,7 @@ impl Engine {
     pub fn get_global_var<T: Clone + 'static>(id: &str) -> RefMut<'_, T> {
         Engine::with_commands_static(|cmds| {
             cmds.get_global_var::<T>(id)
-        }).unwrap().expect("[PINE] GLOBAL VARIABLE IS NULL: global variable does not exist.")
+        }).unwrap().expect(&format!("[PINE] GLOBAL VARIABLE IS NULL: global variable '{id}' does not exist."))
     }
 
     /// ## Description
@@ -755,7 +767,7 @@ macro_rules! get {
 /// ```
 #[macro_export]
 macro_rules! load {
-    ($typeid:ty, $id:expr) => {
+    ($id: expr, $typeid:ty) => {
         Engine::get_global_var::<$typeid>($id)
     };
 }
@@ -783,7 +795,7 @@ macro_rules! load {
 /// ```
 #[macro_export]
 macro_rules! upload {
-    ($id:expr, $var:expr) => {
+    ($var:expr => $id:expr) => {
         Engine::add_global_var($id, $var)
     };
 }

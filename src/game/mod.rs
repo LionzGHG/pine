@@ -13,9 +13,25 @@ pub fn begin() {
 fn on_key(keycode: i32) -> Result<(), RuntimeException> {
     if keycode == KeyCode::SPACE {
         Engine::capture(Engine::get_actor("Actor1")?, |actor| {
-            println!("height={}, y={}", Engine::get_height(), actor.transform.y);
-            actor.transform.y -= 200.0;
-            println!("height={}, y={}", Engine::get_height(), actor.transform.y);            
+            actor.transform.y -= 200.0;    
+        });
+    }
+
+    if keycode == KeyCode::LEFT {
+        Engine::capture(Engine::get_actor("Actor1")?, |actor| {
+            actor.transform.x -= 50.0;
+        });
+        Engine::capture(Engine::get_actor("Actor2")?, |actor| {
+            actor.transform.x -= 50.0;
+        });
+    }
+    
+    if keycode == KeyCode::RIGHT {
+        Engine::capture(Engine::get_actor("Actor1")?, |actor| {
+            actor.transform.x += 50.0;
+        });
+        Engine::capture(Engine::get_actor("Actor2")?, |actor| {
+            actor.transform.x += 50.0;
         });
     }
 
@@ -23,7 +39,7 @@ fn on_key(keycode: i32) -> Result<(), RuntimeException> {
 }
 
 fn on_collision(other: &mut Actor) {
-    println!("Actor1 collided with Actor2.");
+    println!("Actor1 and Actor2 collided!");
 }
 
 fn start() -> Result<(), RuntimeException> {    

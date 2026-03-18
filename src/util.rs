@@ -1,7 +1,7 @@
 
 use std::{cell::{Ref, RefCell, RefMut}, rc::Rc, sync::{Mutex, OnceLock}, time::Instant};
 
-use crate::{Attribute, Commands, Component, ComponentPointer, math::Point, upload, Engine};
+use crate::{Attribute, Commands, Component, ComponentPointer, Engine, assets::{Asset, AssetExt}, math::Point, upload};
 
 /// ## Description
 /// The [KeyCode] struct provides constants that are associated to the representing [i32]-value for the
@@ -26,6 +26,9 @@ impl KeyCode {
             16 => "SHIFT",
             27 => "ESCAPE",
             32 => "SPACE",
+            104 => "H",
+            115 => "S",
+            100 => "D",
             1073741904 => "LEFT",
             1073741906 => "UP",
             1073741903 => "RIGHT",
@@ -35,6 +38,10 @@ impl KeyCode {
             _ => "UNKOWN" 
         }
     }
+
+    pub const KEY_H: i32 = 104;
+    pub const KEY_S: i32 = 115;
+    pub const KEY_D: i32 = 100;
 
     pub const BACK: i32 = 8;
     pub const ENTER: i32 = 13;
@@ -99,25 +106,31 @@ pub trait Globalize {
 
 impl Globalize for i32 {
     fn make_global(&self, id: &'static str) -> Result<(), RuntimeException> {
-        upload!(id, self)
+        Engine::add_global_var(id, self)
+    }
+}
+
+impl Globalize for bool {
+    fn make_global(&self, id: &'static str) -> Result<(), RuntimeException> {
+        Engine::add_global_var(id, self)
     }
 }
 
 impl Globalize for f64 {
     fn make_global(&self, id: &'static str ) -> Result<(), RuntimeException> {
-        upload!(id, self)
+        Engine::add_global_var(id, self)
     }
 }
 
 impl Globalize for String {
     fn make_global(&self, id: &'static str) -> Result<(), RuntimeException> {
-        upload!(id, self)
+        Engine::add_global_var(id, self)
     }
 }
 
 impl Globalize for u32 {
     fn make_global(&self, id: &'static str) -> Result<(), RuntimeException> {
-        upload!(id, self)
+        Engine::add_global_var(id, self)
     }
 }
 
