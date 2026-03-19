@@ -377,6 +377,7 @@ impl Floatify for i32 {
 /// ```
 /// return Err(RuntimeException::new("Player not found"));
 /// ```
+#[derive(Debug)]
 pub struct RuntimeException(pub String);
 
 impl RuntimeException {
@@ -599,4 +600,6 @@ impl Into<sdl2::pixels::Color> for Color {
     fn into(self) -> sdl2::pixels::Color {
         sdl2::pixels::Color::RGBA(self.0, self.1, self.2, self.3)
     }
-}
+}/// # Description
+/// Extends to `Result<(), RuntimeException>`.
+pub type PineResult = Result<(), RuntimeException>;

@@ -4,7 +4,8 @@ pub mod card_game_test;
 
 pub mod poker_game;
 pub mod poker_game_utils;
-pub mod jump_test;
+pub mod movement_test;
+pub mod texture_test;
 
 /// ## Description
 /// see: [Test]

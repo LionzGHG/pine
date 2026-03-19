@@ -91,7 +91,7 @@ impl Collision2D {
 
         let half_w = self.size.x * t.scale / 2.;
         let half_h = self.size.y * t.scale / 2.;
-
+        
         (
             Vec2::new(t.x - half_w, t.y - half_h),
             Vec2::new(t.x + half_w, t.y + half_h)
@@ -102,10 +102,10 @@ impl Collision2D {
         let (a1, a2) = self.bounds();
         let (b1, b2) = other.bounds();
 
-        a1.x < b2.x &&
-        a2.x > b1.x &&
-        a1.y < b2.y &&
-        a2.y > b1.y 
+        a1.x <= b2.x &&
+        a2.x >= b1.x &&
+        a1.y <= b2.y &&
+        a2.y >= b1.y
     }
 }
 
@@ -139,13 +139,18 @@ impl Attribute for Collision2D {
                 let actor = actor_rc.borrow();
                 actor.get_first_attribute_as_ptr::<Collision2D>()
             };
-            
+
             if let Some(other_collider) = other_collider {
-                if self.collides_with(&other_collider.borrow()) {
+                let collided = {
+                    let other = other_collider.borrow();
+                    self.collides_with(&other)
+                };
+
+                if collided {
                     if let Some(callback) = self.on_collision {
-                        let actor = component.safecast_rc::<Actor>().unwrap();
-                        let mut actor = actor.borrow_mut();
-                        callback(&mut actor);
+                        let other_actor = component.safecast_rc::<Actor>().unwrap();
+                        let mut other_actor = other_actor.borrow_mut();
+                        callback(&mut other_actor);
                     }
                 }
             }

@@ -41,6 +41,10 @@ impl Actor {
         }
     }
 
+    pub fn get_name(&self) -> &str {
+        &self.id
+    }
+
     pub fn set_size(&mut self, s: Vec2) {
         self.transform.set_size(s);
     }

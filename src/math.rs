@@ -105,6 +105,10 @@ impl Vec2 {
 
     pub const ZERO: Vec2 = Vec2::new_f32(0., 0.);
 
+    pub fn length(&self) -> f32 {
+        (self.x * self.x + self.y * self.y).sqrt()
+    }
+
     #[inline(always)]
     pub const fn new_f32(x: f32, y: f32) -> Self {
         Vec2 { x, y }
@@ -237,6 +241,12 @@ impl Math {
     /// ```
     pub fn lerp(v0: f32, v1: f32, t: f32) -> f32 {
         v0 + t * (v1 - v0)
+    }
+
+    /// ## Description
+    /// Linear interpolation between two [`Vec2`]
+    pub fn lerp_vec(v0: Vec2, v1: Vec2, t: f32) -> Vec2 {
+        v0 + (v1 - v0) * t
     }
 
     /// ## Description

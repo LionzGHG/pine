@@ -473,6 +473,7 @@ impl Window {
 
                     // Handle on_key_down event
                     if event.type_ == SDL_EventType::SDL_KEYDOWN as u32 {
+
                         if let Some(func) = &self.on_key_down {
                             let err = func(&mut cmds, event.key.keysym.sym);
                             if let Err(re) = err {
